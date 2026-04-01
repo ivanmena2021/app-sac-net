@@ -1,0 +1,17 @@
+@* MetricCard.razor - Reusable KPI metric card *@
+
+<div class="metric-card-v2 accent-@Accent">
+    <div class="metric-value">@Value</div>
+    <div class="metric-label">@Label</div>
+    @if (!string.IsNullOrEmpty(Delta))
+    {
+        <div class="metric-delta">@Delta</div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public string? Delta { get; set; }
+    [Parameter] public string Accent { get; set; } = "blue"; // blue, green, amber, purple, red
+}

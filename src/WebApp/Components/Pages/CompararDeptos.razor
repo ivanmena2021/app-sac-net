@@ -1,0 +1,97 @@
+@page "/comparar-deptos"
+@rendermode InteractiveServer
+@using WebApp.Components.Custom
+
+<PageTitle>Comparar Departamentos — SAC</PageTitle>
+
+<PageHeader Title="🔄 Comparar Departamentos" Description="Compare hasta 5 departamentos lado a lado" />
+
+@if (Home.SharedDatos == null)
+{
+    <div class="alert alert-warning">⚠️ Primero cargue los datos en la página de <a href="/">Inicio</a>.</div>
+}
+else
+{
+    <div class="row mt-3">
+        <div class="col-md-6">
+            <label class="form-label">Seleccione departamentos (máx. 5):</label>
+            @for (int i = 0; i < 5; i++)
+            {
+                var idx = i;
+                <select class="form-select mb-2" @onchange="(e) => OnDeptoSelected(idx, e)">
+                    <option value="">-- Departamento @(idx + 1) --</option>
+                    @foreach (var d in Home.SharedDatos.DepartamentosList)
+                    {
+                        <option value="@d">@System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(d.ToLower())</option>
+                    }
+                </select>
+            }
+        </div>
+    </div>
+
+    @if (SelectedDeptos.Any(d => !string.IsNullOrEmpty(d)))
+    {
+        <h5 class="mt-4">Comparación</h5>
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered table-striped">
+                <thead class="table-primary">
+                    <tr>
+                        <th>Métrica</th>
+                        @foreach (var d in SelectedDeptos.Where(d => !string.IsNullOrEmpty(d)))
+                        {
+                            <th>@System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(d.ToLower())</th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Avisos</strong></td>
+                        @foreach (var d in SelectedDeptos.Where(d => !string.IsNullOrEmpty(d)))
+                        {
+                            <td class="text-end">@Home.SharedDatos.Midagri.Count(s => s.Departamento == d).ToString("N0")</td>
+                        }
+                    </tr>
+                    <tr>
+                        <td><strong>Indemnización (S/)</strong></td>
+                        @foreach (var d in SelectedDeptos.Where(d => !string.IsNullOrEmpty(d)))
+                        {
+                            <td class="text-end">@Home.SharedDatos.Midagri.Where(s => s.Departamento == d).Sum(s => s.Indemnizacion).ToString("N2")</td>
+                        }
+                    </tr>
+                    <tr>
+                        <td><strong>Desembolso (S/)</strong></td>
+                        @foreach (var d in SelectedDeptos.Where(d => !string.IsNullOrEmpty(d)))
+                        {
+                            <td class="text-end">@Home.SharedDatos.Midagri.Where(s => s.Departamento == d).Sum(s => s.MontoDesembolsado).ToString("N2")</td>
+                        }
+                    </tr>
+                    <tr>
+                        <td><strong>Ha Indemnizadas</strong></td>
+                        @foreach (var d in SelectedDeptos.Where(d => !string.IsNullOrEmpty(d)))
+                        {
+                            <td class="text-end">@Home.SharedDatos.Midagri.Where(s => s.Departamento == d).Sum(s => s.SupIndemnizada).ToString("N2")</td>
+                        }
+                    </tr>
+                    <tr>
+                        <td><strong>Productores</strong></td>
+                        @foreach (var d in SelectedDeptos.Where(d => !string.IsNullOrEmpty(d)))
+                        {
+                            <td class="text-end">@Home.SharedDatos.Midagri.Where(s => s.Departamento == d && s.Indemnizacion > 0).Sum(s => s.NProductores).ToString("N0")</td>
+                        }
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+<SacFooter />
+
+@code {
+    private string[] SelectedDeptos = new string[5];
+
+    private void OnDeptoSelected(int index, ChangeEventArgs e)
+    {
+        SelectedDeptos[index] = e.Value?.ToString() ?? "";
+    }
+}

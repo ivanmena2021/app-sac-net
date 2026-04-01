@@ -1,0 +1,95 @@
+@page "/explorar"
+@rendermode InteractiveServer
+@using WebApp.Components.Custom
+
+<PageTitle>Explorar Datos — SAC</PageTitle>
+
+<PageHeader Title="🔍 Explorar Datos" Description="Visualización de datos cargados y auditoría de calidad" />
+
+@if (Home.SharedDatos == null)
+{
+    <div class="alert alert-warning">⚠️ Primero cargue los datos en la página de <a href="/">Inicio</a>.</div>
+}
+else
+{
+    var datos = Home.SharedDatos;
+
+    <ul class="nav nav-tabs" role="tablist">
+        <li class="nav-item"><button class="nav-link @(Tab == "consolidado" ? "active" : "")" @onclick='() => Tab = "consolidado"'>📊 Datos Consolidados</button></li>
+        <li class="nav-item"><button class="nav-link @(Tab == "calidad" ? "active" : "")" @onclick='() => Tab = "calidad"'>🔬 Calidad de Datos</button></li>
+    </ul>
+
+    <div class="tab-content mt-3">
+        @if (Tab == "consolidado")
+        {
+            <p><strong>Registros totales:</strong> @datos.Midagri.Count.ToString("N0")</p>
+            <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                <table class="table table-sm table-striped table-bordered">
+                    <thead class="table-primary sticky-top">
+                        <tr><th>Departamento</th><th>Provincia</th><th>Distrito</th><th>Cultivo</th><th>Tipo Siniestro</th><th>Estado</th><th>Sup. Indemnizada</th><th>Indemnización</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var s in datos.Midagri.Take(200))
+                        {
+                            <tr><td>@s.Departamento</td><td>@s.Provincia</td><td>@s.Distrito</td><td>@s.TipoCultivo</td><td>@s.TipoSiniestro</td><td>@s.EstadoInspeccion</td><td class="text-end">@s.SupIndemnizada.ToString("N2")</td><td class="text-end">@s.Indemnizacion.ToString("N2")</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <h5 class="mt-4">Distribución de Siniestros por Tipo</h5>
+            <div class="row">
+                @foreach (var kvp in datos.SiniestrosPorTipo.OrderByDescending(x => x.Value).Take(10))
+                {
+                    var pct = datos.Metricas.TotalAvisos > 0 ? (double)kvp.Value / datos.Metricas.TotalAvisos * 100 : 0;
+                    <div class="col-md-6 mb-2">
+                        <div class="d-flex align-items-center">
+                            <span class="me-2" style="min-width:180px;font-size:0.85rem;">@kvp.Key</span>
+                            <div class="progress flex-grow-1" style="height:22px;">
+                                <div class="progress-bar" style="width:@pct.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)%;background:var(--sac-blue);">
+                                    @kvp.Value (@pct.ToString("F1")%)
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <!-- Quality Dashboard -->
+            <div class="row">
+                <div class="col-md-3"><MetricCard Label="Total Registros" Value="@datos.Midagri.Count.ToString("N0")" Accent="blue" /></div>
+                <div class="col-md-3"><MetricCard Label="Departamentos" Value="@datos.DepartamentosList.Count.ToString()" Accent="green" /></div>
+                <div class="col-md-3">
+                    @{ var dupes = datos.Midagri.GroupBy(s => s.CodigoAviso).Count(g => g.Count() > 1 && !string.IsNullOrEmpty(g.Key)); }
+                    <MetricCard Label="Códigos Duplicados" Value="@dupes.ToString("N0")" Accent="@(dupes > 0 ? "amber" : "green")" />
+                </div>
+                <div class="col-md-3">
+                    @{ var sinTipo = datos.Midagri.Count(s => string.IsNullOrWhiteSpace(s.TipoSiniestro)); }
+                    <MetricCard Label="Sin Tipo Siniestro" Value="@sinTipo.ToString("N0")" Accent="@(sinTipo > 0 ? "red" : "green")" />
+                </div>
+            </div>
+
+            <h5 class="mt-4">Distribución por Empresa</h5>
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered">
+                    <thead class="table-primary"><tr><th>Empresa</th><th>Registros</th><th>%</th></tr></thead>
+                    <tbody>
+                        @foreach (var kvp in datos.Empresas.OrderByDescending(e => e.Value))
+                        {
+                            var pct = datos.Metricas.TotalAvisos > 0 ? (double)kvp.Value / datos.Metricas.TotalAvisos * 100 : 0;
+                            <tr><td>@kvp.Key</td><td class="text-end">@kvp.Value.ToString("N0")</td><td class="text-end">@pct.ToString("F1")%</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+}
+
+<SacFooter />
+
+@code {
+    private string Tab = "consolidado";
+}

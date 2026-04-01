@@ -1,0 +1,19 @@
+@* StatusBanner.razor - Data update status banner *@
+
+@if (IsDataLoaded)
+{
+    <div class="status-banner">
+        <span class="status-dot"></span>
+        Datos actualizados: @Timestamp
+        @if (!string.IsNullOrEmpty(Source))
+        {
+            <span class="badge bg-secondary ms-2">@Source</span>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsDataLoaded { get; set; }
+    [Parameter] public string? Timestamp { get; set; }
+    [Parameter] public string? Source { get; set; }
+}

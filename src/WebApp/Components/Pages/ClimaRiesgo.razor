@@ -1,0 +1,21 @@
+@page "/clima-riesgo"
+@rendermode InteractiveServer
+@using WebApp.Components.Custom
+
+<PageTitle>Clima y Riesgo — SAC</PageTitle>
+
+<PageHeader Title="🌦️ Clima y Riesgo" Description="Pronóstico meteorológico y evaluación de riesgo agrícola por distrito" />
+
+@if (Home.SharedDatos == null)
+{
+    <div class="alert alert-warning">⚠️ Primero cargue los datos en la página de <a href="/">Inicio</a>.</div>
+}
+else
+{
+    <div class="alert alert-info">
+        🌦️ Esta sección integra datos del pronóstico meteorológico (Open-Meteo API) con perfiles de riesgo
+        histórico por distrito para generar alertas de riesgo agrícola. Se habilitará en una actualización futura.
+    </div>
+}
+
+<SacFooter />

@@ -1,0 +1,220 @@
+@page "/"
+@rendermode InteractiveServer
+@inject IDataProcessorService DataProcessor
+@using WebApp.Components.Custom
+
+<PageTitle>SAC 2025-2026 — Dashboard</PageTitle>
+
+@if (!IsDataLoaded)
+{
+    <!-- Hero Banner -->
+    <div class="hero">
+        <h1>🌾 SAC 2025 — 2026</h1>
+        <p>Seguro Agrícola Catastrófico — MIDAGRI</p>
+        <p class="text-light opacity-75">Dashboard de monitoreo y generación de reportes</p>
+    </div>
+
+    <!-- Stepper -->
+    <Stepper Steps="@CurrentSteps" />
+
+    <!-- Upload Section -->
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <div class="action-card">
+                <h5>📁 1. Archivo MIDAGRI</h5>
+                <p class="text-muted">Reporte Listar Todos los Avisos — La Positiva (.xlsx)</p>
+                <InputFile OnChange="OnMidagriFileSelected" accept=".xlsx" class="form-control" />
+                @if (MidagriFileName != null)
+                {
+                    <small class="text-success mt-1 d-block">✅ @MidagriFileName</small>
+                }
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="action-card">
+                <h5>📁 2. Sistema de Registro de Siniestros</h5>
+                <p class="text-muted">Archivo del Sistema de Registro — Rímac (.xlsx)</p>
+                <InputFile OnChange="OnSiniestrosFileSelected" accept=".xlsx" class="form-control" />
+                @if (SiniestrosFileName != null)
+                {
+                    <small class="text-success mt-1 d-block">✅ @SiniestrosFileName</small>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="text-center mt-3">
+        @if (MidagriStream != null && SiniestrosStream != null)
+        {
+            <button class="btn btn-primary btn-lg px-5" @onclick="ProcessData" disabled="@IsProcessing">
+                @if (IsProcessing)
+                {
+                    <span class="spinner-border spinner-border-sm me-2"></span>
+                    <span>Procesando datos...</span>
+                }
+                else
+                {
+                    <span>🚀 Procesar datos</span>
+                }
+            </button>
+        }
+        else
+        {
+            <div class="alert alert-info">📌 Suba ambos archivos para continuar</div>
+        }
+    </div>
+
+    @if (ErrorMessage != null)
+    {
+        <div class="alert alert-danger mt-3">@ErrorMessage</div>
+    }
+
+    <!-- Info Cards -->
+    <div class="row mt-4">
+        <div class="col-md-3">
+            <div class="action-card text-center">
+                <h4>📊</h4>
+                <h6>Dashboard Nacional</h6>
+                <p class="text-muted small">KPIs y métricas principales del SAC a nivel nacional</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="action-card text-center">
+                <h4>📄</h4>
+                <h6>Ayuda Memoria</h6>
+                <p class="text-muted small">Reportes Nacional y Departamental en Word</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="action-card text-center">
+                <h4>🗺️</h4>
+                <h6>Mapa de Calor</h6>
+                <p class="text-muted small">Visualización geográfica de siniestros</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="action-card text-center">
+                <h4>🔔</h4>
+                <h6>Semáforo de Alertas</h6>
+                <p class="text-muted small">Control de plazos por etapa del SAC</p>
+            </div>
+        </div>
+    </div>
+
+    <SacFooter />
+}
+else
+{
+    <!-- Redirect to Dashboard after data loaded -->
+    <PageHeader Title="Datos cargados exitosamente" Description="Use el menú lateral para navegar" />
+    <StatusBanner IsDataLoaded="true" Timestamp="@UpdateTimestamp" Source="@DataSource" />
+
+    <div class="row mt-4">
+        <div class="col-md-4">
+            <a href="/dashboard" class="btn btn-primary btn-lg w-100">📊 Ir al Dashboard</a>
+        </div>
+        <div class="col-md-4">
+            <a href="/reportes" class="btn btn-outline-primary btn-lg w-100">📄 Generar Reportes</a>
+        </div>
+        <div class="col-md-4">
+            <button class="btn btn-outline-secondary btn-lg w-100" @onclick="ResetData">🔄 Cargar nuevos datos</button>
+        </div>
+    </div>
+
+    <SacFooter />
+}
+
+@code {
+    // Static shared state (accessible from all pages)
+    public static DatosNacionalesDto? SharedDatos { get; set; }
+    public static string? UpdateTimestamp { get; set; }
+    public static string? DataSource { get; set; }
+    public static bool IsDataLoaded => SharedDatos != null;
+
+    private MemoryStream? MidagriStream;
+    private MemoryStream? SiniestrosStream;
+    private string? MidagriFileName;
+    private string? SiniestrosFileName;
+    private string? ErrorMessage;
+    private bool IsProcessing;
+
+    private List<Stepper.StepItem> CurrentSteps = new()
+    {
+        new() { Label = "Archivo MIDAGRI", Status = "pending" },
+        new() { Label = "Archivo Siniestros", Status = "pending" },
+        new() { Label = "Procesando", Status = "pending" },
+        new() { Label = "Listo", Status = "pending" },
+    };
+
+    private async Task OnMidagriFileSelected(InputFileChangeEventArgs e)
+    {
+        MidagriFileName = e.File.Name;
+        MidagriStream = new MemoryStream();
+        await e.File.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024).CopyToAsync(MidagriStream);
+        MidagriStream.Position = 0;
+        CurrentSteps[0].Status = "done";
+        if (SiniestrosStream != null) CurrentSteps[1].Status = "done";
+    }
+
+    private async Task OnSiniestrosFileSelected(InputFileChangeEventArgs e)
+    {
+        SiniestrosFileName = e.File.Name;
+        SiniestrosStream = new MemoryStream();
+        await e.File.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024).CopyToAsync(SiniestrosStream);
+        SiniestrosStream.Position = 0;
+        CurrentSteps[1].Status = "done";
+        if (MidagriStream != null) CurrentSteps[0].Status = "done";
+    }
+
+    private async Task ProcessData()
+    {
+        if (MidagriStream == null || SiniestrosStream == null) return;
+        IsProcessing = true;
+        ErrorMessage = null;
+        CurrentSteps[2].Status = "active";
+        StateHasChanged();
+
+        try
+        {
+            await Task.Run(() =>
+            {
+                MidagriStream.Position = 0;
+                SiniestrosStream.Position = 0;
+                SharedDatos = DataProcessor.ProcessDynamicData(MidagriStream, SiniestrosStream);
+            });
+            UpdateTimestamp = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
+            DataSource = "manual";
+            CurrentSteps[2].Status = "done";
+            CurrentSteps[3].Status = "done";
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error al procesar: {ex.Message}";
+            CurrentSteps[2].Status = "error";
+        }
+        finally
+        {
+            IsProcessing = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ResetData()
+    {
+        SharedDatos = null;
+        UpdateTimestamp = null;
+        DataSource = null;
+        MidagriStream = null;
+        SiniestrosStream = null;
+        MidagriFileName = null;
+        SiniestrosFileName = null;
+        ErrorMessage = null;
+        CurrentSteps = new()
+        {
+            new() { Label = "Archivo MIDAGRI", Status = "pending" },
+            new() { Label = "Archivo Siniestros", Status = "pending" },
+            new() { Label = "Procesando", Status = "pending" },
+            new() { Label = "Listo", Status = "pending" },
+        };
+    }
+}

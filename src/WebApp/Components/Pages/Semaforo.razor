@@ -1,0 +1,72 @@
+@page "/semaforo"
+@rendermode InteractiveServer
+@using WebApp.Components.Custom
+
+<PageTitle>Semáforo de Alertas — SAC</PageTitle>
+
+<PageHeader Title="🚦 Semáforo de Alertas" Description="Control de plazos por etapa del proceso SAC" />
+
+@if (Home.SharedDatos == null)
+{
+    <div class="alert alert-warning">⚠️ Primero cargue los datos en la página de <a href="/">Inicio</a>.</div>
+}
+else
+{
+    var datos = Home.SharedDatos;
+
+    <div class="alert alert-info">
+        🚦 El semáforo clasifica cada aviso de siniestro según el cumplimiento de plazos en 6 etapas del proceso SAC:
+        Atención, Programación, Ajuste, Reprogramación, Validación y Pago.
+    </div>
+
+    <!-- Basic alert summary based on available data -->
+    <div class="row mt-3">
+        @{
+            var total = datos.Midagri.Count;
+            var cerrados = datos.Midagri.Count(s => s.EstadoInspeccion.ToUpper() == "CERRADO");
+            var pendientes = total - cerrados;
+            var conDesembolso = datos.Midagri.Count(s => s.MontoDesembolsado > 0);
+            var sinDesembolso = cerrados - conDesembolso;
+        }
+        <div class="col-md-3"><MetricCard Label="Total Avisos" Value="@total.ToString("N0")" Accent="blue" /></div>
+        <div class="col-md-3"><MetricCard Label="Evaluados (Cerrados)" Value="@cerrados.ToString("N0")" Delta="@($"{(total > 0 ? (double)cerrados/total*100 : 0):F1}%")" Accent="green" /></div>
+        <div class="col-md-3"><MetricCard Label="Pendientes Evaluación" Value="@pendientes.ToString("N0")" Accent="@(pendientes > total * 0.3 ? "red" : "amber")" /></div>
+        <div class="col-md-3"><MetricCard Label="Pendientes Desembolso" Value="@sinDesembolso.ToString("N0")" Accent="amber" /></div>
+    </div>
+
+    <h5 class="mt-4">Estado por Departamento</h5>
+    <div class="table-responsive" style="max-height:500px;overflow-y:auto;">
+        <table class="table table-sm table-striped table-bordered">
+            <thead class="table-primary sticky-top">
+                <tr><th>Departamento</th><th>Avisos</th><th>Cerrados</th><th>% Avance</th><th>Con Desembolso</th><th>Estado</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var depto in datos.DepartamentosList)
+                {
+                    var items = datos.Midagri.Where(s => s.Departamento == depto).ToList();
+                    var tot = items.Count;
+                    var cer = items.Count(s => s.EstadoInspeccion.ToUpper() == "CERRADO");
+                    var pct = tot > 0 ? (double)cer / tot * 100 : 0;
+                    var des = items.Count(s => s.MontoDesembolsado > 0);
+                    var emoji = pct >= 80 ? "🟢" : pct >= 50 ? "🟡" : "🔴";
+
+                    <tr>
+                        <td>@System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(depto.ToLower())</td>
+                        <td class="text-end">@tot</td>
+                        <td class="text-end">@cer</td>
+                        <td class="text-end">@($"{pct:F1}%")</td>
+                        <td class="text-end">@des</td>
+                        <td class="text-center">@emoji</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="alert alert-info mt-3">
+        🔔 La versión completa del semáforo con clasificación por 6 etapas y alertas por plazos
+        (verde/ámbar/rojo) se habilitará en una actualización futura.
+    </div>
+}
+
+<SacFooter />

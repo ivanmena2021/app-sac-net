@@ -1,0 +1,22 @@
+@page "/calendario"
+@rendermode InteractiveServer
+@using WebApp.Components.Custom
+
+<PageTitle>Calendario Agrícola — SAC</PageTitle>
+
+<PageHeader Title="📅 Calendario Agrícola" Description="Períodos de siembra, cosecha y riesgo por departamento basados en 5 campañas históricas" />
+
+@if (Home.SharedDatos == null)
+{
+    <div class="alert alert-warning">⚠️ Primero cargue los datos en la página de <a href="/">Inicio</a>.</div>
+}
+else
+{
+    <div class="alert alert-info">
+        📅 El calendario agrícola muestra los períodos de siembra, cosecha y riesgo climático para cada cultivo y departamento,
+        basado en el análisis de 66,000+ registros de siniestros de 5 campañas anteriores.
+        La integración completa se habilitará en una actualización futura.
+    </div>
+}
+
+<SacFooter />

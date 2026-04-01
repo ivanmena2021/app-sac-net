@@ -1,0 +1,33 @@
+@page "/comparativo"
+@rendermode InteractiveServer
+@using WebApp.Components.Custom
+
+<PageTitle>Comparativo Campañas — SAC</PageTitle>
+
+<PageHeader Title="📈 Comparativo de Campañas" Description="Evolución histórica del SAC a lo largo de 6 campañas (2020-2026)" />
+
+@if (Home.SharedDatos == null)
+{
+    <div class="alert alert-warning">⚠️ Primero cargue los datos en la página de <a href="/">Inicio</a>.</div>
+}
+else
+{
+    <div class="alert alert-info">
+        📊 Esta sección muestra la comparación de la campaña actual 2025-2026 con las 5 campañas anteriores.
+        Los datos históricos provienen de archivos estáticos incluidos en la aplicación.
+    </div>
+
+    <h5 class="mt-4">Campaña Actual 2025-2026</h5>
+    <div class="row">
+        <div class="col-md-3"><MetricCard Label="Total Avisos" Value="@Home.SharedDatos.Metricas.TotalAvisos.ToString("N0")" Accent="blue" /></div>
+        <div class="col-md-3"><MetricCard Label="Prima Neta" Value="@($"S/ {Home.SharedDatos.Metricas.PrimaNeta:N0}")" Accent="green" /></div>
+        <div class="col-md-3"><MetricCard Label="Indemnización" Value="@($"S/ {Home.SharedDatos.Metricas.MontoIndemnizado:N0}")" Accent="amber" /></div>
+        <div class="col-md-3"><MetricCard Label="Siniestralidad" Value="@($"{Home.SharedDatos.Metricas.IndiceSiniestralidad:F1}%")" Accent="@(Home.SharedDatos.Metricas.IndiceSiniestralidad > 70 ? "red" : Home.SharedDatos.Metricas.IndiceSiniestralidad > 50 ? "amber" : "green")" /></div>
+    </div>
+
+    <div class="alert alert-info mt-3">
+        📈 Los gráficos interactivos de evolución temporal y comparación entre campañas se habilitarán cuando se complete la integración con Plotly.Blazor.
+    </div>
+}
+
+<SacFooter />

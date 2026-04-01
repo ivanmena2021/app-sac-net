@@ -1,0 +1,84 @@
+@page "/dashboard"
+@rendermode InteractiveServer
+@inject IJSRuntime JS
+@using WebApp.Components.Custom
+
+<PageTitle>Dashboard Nacional — SAC</PageTitle>
+
+<PageHeader Title="Dashboard Nacional" Description="Indicadores principales del SAC 2025-2026" />
+
+@if (Datos == null)
+{
+    <div class="alert alert-warning">⚠️ Primero cargue los datos en la página de <a href="/">Inicio</a>.</div>
+}
+else
+{
+    <StatusBanner IsDataLoaded="true" Timestamp="@Home.UpdateTimestamp" Source="@Home.DataSource" />
+
+    <!-- Action buttons -->
+    <div class="row mt-3 mb-3">
+        <div class="col-md-6">
+            <button class="btn btn-outline-primary w-100" @onclick="ExportExcel">
+                📥 Descargar consolidado Excel
+            </button>
+        </div>
+        <div class="col-md-6">
+            <a href="/" class="btn btn-outline-secondary w-100">🔄 Nueva actualización</a>
+        </div>
+    </div>
+
+    <!-- 8 KPI Metrics in 2 rows of 4 -->
+    <div class="row">
+        <div class="col-md-3">
+            <MetricCard Label="Total Avisos" Value="@Datos.Metricas.TotalAvisos.ToString("N0")" Accent="blue" />
+        </div>
+        <div class="col-md-3">
+            <MetricCard Label="Avance Evaluación" Value="@($"{Datos.Metricas.PctAjustados:F1}%")" Delta="@($"{Datos.Metricas.TotalAjustados:N0} evaluados")" Accent="green" />
+        </div>
+        <div class="col-md-3">
+            <MetricCard Label="Indemnización (S/)" Value="@($"S/ {Datos.Metricas.MontoIndemnizado:N0}")" Accent="amber" />
+        </div>
+        <div class="col-md-3">
+            <MetricCard Label="Avance Desembolso" Value="@($"{Datos.Metricas.PctDesembolso:F1}%")" Delta="@($"S/ {Datos.Metricas.MontoDesembolsado:N0}")" Accent="green" />
+        </div>
+    </div>
+    <div class="row mt-2">
+        <div class="col-md-3">
+            <MetricCard Label="Ha Aseguradas" Value="@($"{Datos.Metricas.SupAsegurada:N0}")" Accent="blue" />
+        </div>
+        <div class="col-md-3">
+            <MetricCard Label="Ha Indemnizadas" Value="@($"{Datos.Metricas.HaIndemnizadas:N0}")" Accent="purple" />
+        </div>
+        <div class="col-md-3">
+            <MetricCard Label="Siniestralidad" Value="@($"{Datos.Metricas.IndiceSiniestralidad:F2}%")" Accent="@(Datos.Metricas.IndiceSiniestralidad > 70 ? "red" : Datos.Metricas.IndiceSiniestralidad > 50 ? "amber" : "green")" />
+        </div>
+        <div class="col-md-3">
+            <MetricCard Label="Productores Beneficiados" Value="@Datos.Metricas.ProductoresDesembolso.ToString("N0")" Accent="green" />
+        </div>
+    </div>
+
+    <!-- Quick Navigation -->
+    <div class="section-header mt-4">
+        <h5>🧭 Navegación rápida</h5>
+    </div>
+    <div class="row mt-2">
+        <div class="col-md-3"><a href="/consultas" class="btn btn-outline-primary w-100 mb-2">💬 Consultas</a></div>
+        <div class="col-md-3"><a href="/mapa-calor" class="btn btn-outline-primary w-100 mb-2">🗺️ Mapa de Calor</a></div>
+        <div class="col-md-3"><a href="/reportes" class="btn btn-outline-primary w-100 mb-2">📄 Reportes</a></div>
+        <div class="col-md-3"><a href="/semaforo" class="btn btn-outline-primary w-100 mb-2">🔔 Semáforo</a></div>
+    </div>
+}
+
+<SacFooter />
+
+@code {
+    private DatosNacionalesDto? Datos => Home.SharedDatos;
+
+    private async Task ExportExcel()
+    {
+        if (Datos == null) return;
+        // Build simple consolidated Excel using ClosedXML via Infrastructure
+        // For now, show a message
+        await JS.InvokeVoidAsync("alert", "Funcionalidad de exportación Excel en desarrollo.");
+    }
+}

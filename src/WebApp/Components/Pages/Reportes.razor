@@ -1,0 +1,283 @@
+@page "/reportes"
+@rendermode InteractiveServer
+@inject IWordReportService WordService
+@inject IExcelReportService ExcelService
+@inject IDataProcessorService DataProcessor
+@inject IJSRuntime JS
+@using WebApp.Components.Custom
+
+<PageTitle>Generar Reportes — SAC</PageTitle>
+
+<PageHeader Title="Generar Reportes" Description="Documentos Word, Excel, PowerPoint y PDF del SAC 2025-2026" />
+
+@if (Datos == null)
+{
+    <div class="alert alert-warning">⚠️ Primero cargue los datos en la página de <a href="/">Inicio</a>.</div>
+}
+else
+{
+    <ul class="nav nav-tabs" role="tablist">
+        @foreach (var tab in Tabs)
+        {
+            <li class="nav-item">
+                <button class="nav-link @(ActiveTab == tab.Key ? "active" : "")" @onclick="() => ActiveTab = tab.Key">
+                    @tab.Value
+                </button>
+            </li>
+        }
+    </ul>
+
+    <div class="tab-content mt-3">
+        @switch (ActiveTab)
+        {
+            case "nacional":
+                <div class="tab-intro">
+                    <p>Ayuda Memoria: Resumen de Operatividad SAC 2025-2026 — Fecha de corte: <strong>@Datos.FechaCorte</strong></p>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <button class="btn btn-primary w-100" @onclick="GenNacional" disabled="@IsGenerating">
+                            @(IsGenerating ? "Generando..." : "⚡ Generar Ayuda Memoria Nacional")
+                        </button>
+                    </div>
+                    <div class="col-md-6">
+                        @if (DocNacional != null)
+                        {
+                            <button class="btn btn-success w-100" @onclick="() => Download(DocNacional, DocNacionalName, DocxMime)">
+                                ⬇️ Descargar Nacional
+                            </button>
+                        }
+                    </div>
+                </div>
+                @RenderCuadros()
+                break;
+
+            case "departamental":
+                <div class="tab-intro">
+                    <p>Seleccione un departamento para generar su Ayuda Memoria individual.</p>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-4">
+                        <select class="form-select" @onchange="OnDeptoChanged">
+                            <option value="">-- Seleccionar departamento --</option>
+                            @foreach (var d in Datos.DepartamentosList)
+                            {
+                                <option value="@d">@ToTitle(d)</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                @if (DeptoData != null)
+                {
+                    <div class="row mt-3">
+                        <div class="col-md-3"><MetricCard Label="Avisos" Value="@DeptoData.TotalAvisos.ToString()" Accent="blue" /></div>
+                        <div class="col-md-3"><MetricCard Label="Indemnización" Value="@($"S/ {DeptoData.MontoIndemnizado:N0}")" Accent="amber" /></div>
+                        <div class="col-md-3"><MetricCard Label="Ha Indemnizadas" Value="@($"{DeptoData.HaIndemnizadas:N2}")" Accent="purple" /></div>
+                        <div class="col-md-3"><MetricCard Label="Desembolso" Value="@($"S/ {DeptoData.MontoDesembolsado:N0}")" Accent="green" /></div>
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-md-6">
+                            <button class="btn btn-primary w-100" @onclick="GenDepartamental" disabled="@IsGenerating">
+                                @(IsGenerating ? "Generando..." : "⚡ Generar Departamental")
+                            </button>
+                        </div>
+                        <div class="col-md-6">
+                            @if (DocDepto != null)
+                            {
+                                <button class="btn btn-success w-100" @onclick="() => Download(DocDepto, DocDeptoName, DocxMime)">
+                                    ⬇️ Descargar Departamental
+                                </button>
+                            }
+                        </div>
+                    </div>
+                }
+                break;
+
+            case "operatividad":
+                <div class="tab-intro">
+                    <p>Reporte de Operatividad del SAC con gráficos embebidos y análisis por empresa aseguradora.</p>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <button class="btn btn-primary w-100" disabled>⚡ Generar Operatividad (próximamente)</button>
+                    </div>
+                </div>
+                break;
+
+            case "eme":
+                <div class="tab-intro">
+                    <p>Formato Reporte EME — Reporte consolidado por región con acciones implementadas.</p>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <button class="btn btn-primary w-100" @onclick="GenEME" disabled="@IsGenerating">
+                            @(IsGenerating ? "Generando..." : "⚡ Generar Reporte EME")
+                        </button>
+                    </div>
+                    <div class="col-md-6">
+                        @if (XlsEme != null)
+                        {
+                            <button class="btn btn-success w-100" @onclick="() => Download(XlsEme, XlsEmeName, XlsxMime)">
+                                ⬇️ Descargar EME
+                            </button>
+                        }
+                    </div>
+                </div>
+                break;
+
+            case "ppt":
+                <div class="tab-intro">
+                    <p>Presentación PowerPoint dinámica con filtros geográficos y por empresa.</p>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <button class="btn btn-primary w-100" disabled>⚡ Generar PPT Dinámica (próximamente)</button>
+                    </div>
+                </div>
+                break;
+
+            case "batch":
+                <div class="tab-intro">
+                    <p>Genera todos los reportes departamentales + nacional en un archivo ZIP.</p>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <button class="btn btn-primary w-100" disabled>⚡ Generar Batch (próximamente)</button>
+                    </div>
+                </div>
+                break;
+
+            case "historico":
+                <div class="tab-intro">
+                    <p>Análisis histórico de siniestralidad a lo largo de 5 campañas (2020-2026).</p>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <button class="btn btn-primary w-100" disabled>⚡ Generar PPT Histórica (próximamente)</button>
+                    </div>
+                </div>
+                break;
+        }
+    </div>
+
+    @if (ErrorMsg != null)
+    {
+        <div class="alert alert-danger mt-3">@ErrorMsg</div>
+    }
+    @if (SuccessMsg != null)
+    {
+        <div class="alert alert-success mt-3">@SuccessMsg</div>
+    }
+}
+
+<SacFooter />
+
+@code {
+    private DatosNacionalesDto? Datos => Home.SharedDatos;
+    private DatosDepartamentalDto? DeptoData;
+    private string ActiveTab = "nacional";
+    private bool IsGenerating;
+    private string? ErrorMsg;
+    private string? SuccessMsg;
+    private string SelectedDepto = "";
+
+    // Generated documents
+    private byte[]? DocNacional;
+    private string DocNacionalName = "";
+    private byte[]? DocDepto;
+    private string DocDeptoName = "";
+    private byte[]? XlsEme;
+    private string XlsEmeName = "";
+
+    private const string DocxMime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    private const string XlsxMime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+    private Dictionary<string, string> Tabs = new()
+    {
+        ["nacional"] = "📄 Nacional",
+        ["departamental"] = "📄 Departamental",
+        ["operatividad"] = "📊 Operatividad",
+        ["eme"] = "📋 EME",
+        ["ppt"] = "📽️ PPT Dinámica",
+        ["batch"] = "📦 Todos",
+        ["historico"] = "📈 Histórico",
+    };
+
+    private string ToTitle(string s) => System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(s.ToLower());
+
+    private void OnDeptoChanged(ChangeEventArgs e)
+    {
+        SelectedDepto = e.Value?.ToString() ?? "";
+        DocDepto = null;
+        if (!string.IsNullOrEmpty(SelectedDepto) && Datos != null)
+            DeptoData = DataProcessor.GetDepartamentoData(Datos, SelectedDepto);
+        else
+            DeptoData = null;
+    }
+
+    private async Task GenNacional()
+    {
+        if (Datos == null) return;
+        IsGenerating = true; ErrorMsg = null; SuccessMsg = null; StateHasChanged();
+        try
+        {
+            DocNacional = await Task.Run(() => WordService.GenerateNacionalDocx(Datos));
+            DocNacionalName = $"Ayuda_Memoria_Resumen_SAC_2025-2026_{DateTime.Now:dd_MM_yyyy}.docx";
+            SuccessMsg = "✅ Documento nacional generado exitosamente";
+        }
+        catch (Exception ex) { ErrorMsg = $"Error: {ex.Message}"; }
+        finally { IsGenerating = false; StateHasChanged(); }
+    }
+
+    private async Task GenDepartamental()
+    {
+        if (DeptoData == null) return;
+        IsGenerating = true; ErrorMsg = null; SuccessMsg = null; StateHasChanged();
+        try
+        {
+            DocDepto = await Task.Run(() => WordService.GenerateDepartamentalDocx(DeptoData));
+            DocDeptoName = $"Ayuda_Memoria_SAC_{DeptoData.Departamento}_{DateTime.Now:dd_MM_yyyy}.docx";
+            SuccessMsg = $"✅ Documento de {DeptoData.Departamento} generado";
+        }
+        catch (Exception ex) { ErrorMsg = $"Error: {ex.Message}"; }
+        finally { IsGenerating = false; StateHasChanged(); }
+    }
+
+    private async Task GenEME()
+    {
+        if (Datos == null) return;
+        IsGenerating = true; ErrorMsg = null; SuccessMsg = null; StateHasChanged();
+        try
+        {
+            XlsEme = await Task.Run(() => ExcelService.GenerateReporteEme(Datos));
+            XlsEmeName = $"formato_reporte_EME_{DateTime.Now:dd_MM_yyyy}.xlsx";
+            SuccessMsg = "✅ Reporte EME generado exitosamente";
+        }
+        catch (Exception ex) { ErrorMsg = $"Error: {ex.Message}"; }
+        finally { IsGenerating = false; StateHasChanged(); }
+    }
+
+    private async Task Download(byte[] data, string name, string mime)
+    {
+        await JS.InvokeVoidAsync("downloadFile", name, mime, Convert.ToBase64String(data));
+    }
+
+    private RenderFragment RenderCuadros() => __builder =>
+    {
+        if (Datos == null) return;
+        <h5 class="mt-4">Vista previa: Cuadro 1 — Primas y Cobertura</h5>
+        <div class="table-responsive">
+            <table class="table table-sm table-striped table-bordered">
+                <thead class="table-primary">
+                    <tr><th>Departamento</th><th>Prima Total (S/)</th><th>Hectáreas Aseguradas</th><th>Suma Asegurada (S/)</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in Datos.Cuadro1)
+                    {
+                        <tr><td>@r.Departamento</td><td class="text-end">@r.PrimaTotal.ToString("N2")</td><td class="text-end">@r.Hectareas.ToString("N2")</td><td class="text-end">@r.SumaAsegurada.ToString("N2")</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    };
+}

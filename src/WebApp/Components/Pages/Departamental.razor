@@ -1,0 +1,140 @@
+@page "/departamental"
+@rendermode InteractiveServer
+@inject IDataProcessorService DataProcessor
+@inject IWordReportService WordService
+@inject IJSRuntime JS
+
+<PageTitle>Reporte Departamental - SAC</PageTitle>
+
+<h3>Ayuda Memoria Departamental del SAC</h3>
+
+@if (Datos == null)
+{
+    <div class="alert alert-warning">Primero cargue y procese los archivos en la pagina de Inicio.</div>
+}
+else
+{
+    <div class="row">
+        <div class="col-md-4">
+            <label class="form-label">Seleccione el departamento:</label>
+            <select class="form-select" @onchange="OnDepartamentoChanged">
+                <option value="">-- Seleccionar --</option>
+                @foreach (var d in Datos.DepartamentosList)
+                {
+                    <option value="@d">@System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(d.ToLower())</option>
+                }
+            </select>
+        </div>
+    </div>
+
+    @if (DeptoData != null)
+    {
+        <div class="row mt-3">
+            <div class="col-md-3"><div class="metric-card"><h3>@DeptoData.TotalAvisos</h3><p>Avisos</p></div></div>
+            <div class="col-md-3"><div class="metric-card"><h3>S/ @DeptoData.MontoIndemnizado.ToString("N2")</h3><p>Indemnizacion</p></div></div>
+            <div class="col-md-3"><div class="metric-card"><h3>@DeptoData.HaIndemnizadas.ToString("N2")</h3><p>Ha Indemnizadas</p></div></div>
+            <div class="col-md-3"><div class="metric-card"><h3>S/ @DeptoData.MontoDesembolsado.ToString("N2")</h3><p>Desembolso</p></div></div>
+        </div>
+
+        <p class="mt-2"><strong>Aseguradora:</strong> @DeptoData.Empresa | <strong>Prima neta:</strong> S/ @DeptoData.PrimaNeta.ToString("N2") | <strong>Superficie asegurada:</strong> @DeptoData.SupAsegurada.ToString("N0") ha</p>
+
+        <div class="row mt-3">
+            <div class="col-md-6">
+                <button class="btn btn-primary w-100" @onclick="GenerateDoc" disabled="@IsGenerating">
+                    @(IsGenerating ? "Generando..." : "Generar Ayuda Memoria Departamental")
+                </button>
+            </div>
+            <div class="col-md-6">
+                @if (DocBytes != null)
+                {
+                    <button class="btn btn-success w-100" @onclick="DownloadDoc">Descargar Ayuda Memoria Departamental</button>
+                }
+            </div>
+        </div>
+
+        @if (ErrorMsg != null)
+        {
+            <div class="alert alert-danger mt-3">@ErrorMsg</div>
+        }
+
+        @if (DeptoData.AvisosTipo.Count > 0)
+        {
+            <h5 class="mt-4">Avisos por Tipo de Siniestro</h5>
+            <table class="table table-sm table-striped table-bordered">
+                <thead class="table-primary"><tr><th>Tipo Siniestro</th><th>N Avisos</th><th>%</th></tr></thead>
+                <tbody>
+                    @foreach (var r in DeptoData.AvisosTipo)
+                    {
+                        <tr><td>@r[0]</td><td class="text-end">@r[1]</td><td class="text-end">@r[2]</td></tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        @if (DeptoData.DistProvincia.Count > 0)
+        {
+            <h5 class="mt-4">Distribucion por Provincia</h5>
+            <div class="table-responsive">
+                <table class="table table-sm table-striped table-bordered">
+                    <thead class="table-primary">
+                        <tr>@foreach (var h in DeptoData.DistProvinciaHeaders) { <th>@h</th> }</tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in DeptoData.DistProvincia)
+                        {
+                            <tr>@foreach (var c in r) { <td>@c</td> }</tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+}
+
+@code {
+    private DatosNacionalesDto? Datos => Home.SharedDatos;
+    private DatosDepartamentalDto? DeptoData;
+    private string SelectedDepto = "";
+    private byte[]? DocBytes;
+    private string? ErrorMsg;
+    private bool IsGenerating;
+
+    private void OnDepartamentoChanged(ChangeEventArgs e)
+    {
+        SelectedDepto = e.Value?.ToString() ?? "";
+        DocBytes = null;
+        ErrorMsg = null;
+        if (!string.IsNullOrEmpty(SelectedDepto) && Datos != null)
+        {
+            DeptoData = DataProcessor.GetDepartamentoData(Datos, SelectedDepto);
+        }
+        else
+        {
+            DeptoData = null;
+        }
+    }
+
+    private async Task GenerateDoc()
+    {
+        if (DeptoData == null) return;
+        IsGenerating = true;
+        ErrorMsg = null;
+        StateHasChanged();
+
+        try
+        {
+            DocBytes = await Task.Run(() => WordService.GenerateDepartamentalDocx(DeptoData));
+        }
+        catch (Exception ex) { ErrorMsg = $"Error: {ex.Message}"; }
+        finally { IsGenerating = false; StateHasChanged(); }
+    }
+
+    private async Task DownloadDoc()
+    {
+        if (DocBytes == null) return;
+        var name = $"Ayuda_Memoria_SAC_{DeptoData?.Departamento}_2025-2026_{DateTime.Now:dd_MM_yyyy}.docx";
+        await JS.InvokeVoidAsync("downloadFile", name,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            Convert.ToBase64String(DocBytes));
+    }
+}

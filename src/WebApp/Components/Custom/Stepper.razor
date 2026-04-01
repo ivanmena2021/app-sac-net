@@ -1,0 +1,39 @@
+@* Stepper.razor - Progress step indicator *@
+
+<div class="stepper">
+    @for (int i = 0; i < Steps.Count; i++)
+    {
+        var step = Steps[i];
+        var statusClass = step.Status switch {
+            "done" => "done",
+            "active" => "active",
+            "error" => "error",
+            _ => "pending"
+        };
+        var icon = step.Status switch {
+            "done" => "\u2713",
+            "active" => "\u25CF",
+            "error" => "\u2717",
+            _ => (i + 1).ToString()
+        };
+
+        <div class="step @statusClass">
+            <div class="step-circle">@icon</div>
+            <div class="step-label">@step.Label</div>
+        </div>
+        @if (i < Steps.Count - 1)
+        {
+            <div class="step-connector @(step.Status == "done" ? "done" : "")"></div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public List<StepItem> Steps { get; set; } = new();
+
+    public class StepItem
+    {
+        public string Label { get; set; } = "";
+        public string Status { get; set; } = "pending"; // pending, active, done, error
+    }
+}

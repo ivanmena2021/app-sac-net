@@ -1,0 +1,79 @@
+@page "/consultas"
+@rendermode InteractiveServer
+@using WebApp.Components.Custom
+
+<PageTitle>Consultas — SAC</PageTitle>
+
+<PageHeader Title="💬 Consultas SAC" Description="Haga preguntas sobre los datos del SAC en lenguaje natural" />
+
+@if (Home.SharedDatos == null)
+{
+    <div class="alert alert-warning">⚠️ Primero cargue los datos en la página de <a href="/">Inicio</a>.</div>
+}
+else
+{
+    <div class="chat-header">
+        <span>Motor de Consultas</span>
+        <span class="badge bg-secondary ms-2">⚙️ Motor Básico</span>
+    </div>
+
+    <div class="alert alert-info mt-3">
+        💡 Escriba su consulta en lenguaje natural. Ejemplos: "¿Cuántos avisos hay en Lambayeque?", "Top 5 departamentos por indemnización"
+    </div>
+
+    <div class="row mt-3">
+        <div class="col-12">
+            <textarea class="form-control" rows="3" @bind="QueryText" placeholder="Escriba su consulta aquí..."></textarea>
+        </div>
+    </div>
+
+    <div class="row mt-2">
+        <div class="col-12">
+            <button class="btn btn-primary" @onclick="ExecuteQuery" disabled="@IsQuerying">
+                @(IsQuerying ? "Consultando..." : "🔍 Consultar")
+            </button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(ResultText))
+    {
+        <div class="action-card mt-3">
+            <h6>Resultado:</h6>
+            <p>@ResultText</p>
+        </div>
+    }
+}
+
+<SacFooter />
+
+@code {
+    private string QueryText = "";
+    private string? ResultText;
+    private bool IsQuerying;
+
+    private async Task ExecuteQuery()
+    {
+        if (string.IsNullOrWhiteSpace(QueryText) || Home.SharedDatos == null) return;
+        IsQuerying = true;
+        StateHasChanged();
+
+        await Task.Delay(500); // Simulate processing
+
+        var datos = Home.SharedDatos;
+        var q = QueryText.ToUpper();
+
+        // Basic query engine (simplified port of query_engine.py)
+        if (q.Contains("TOTAL") && q.Contains("AVISO"))
+            ResultText = $"El total de avisos de siniestro registrados es {datos.Metricas.TotalAvisos:N0}.";
+        else if (q.Contains("INDEMNIZ"))
+            ResultText = $"El monto total indemnizado es S/ {datos.Metricas.MontoIndemnizado:N2}. La siniestralidad es {datos.Metricas.IndiceSiniestralidad:F2}%.";
+        else if (q.Contains("DESEMBOL"))
+            ResultText = $"Se han desembolsado S/ {datos.Metricas.MontoDesembolsado:N2} ({datos.Metricas.PctDesembolso:F1}%) a {datos.Metricas.ProductoresDesembolso:N0} productores.";
+        else if (q.Contains("DEPARTAMENTO") || q.Contains("DEPTO"))
+            ResultText = $"Hay datos de {datos.DepartamentosList.Count} departamentos: {string.Join(", ", datos.DepartamentosList.Take(10).Select(d => System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(d.ToLower())))}...";
+        else
+            ResultText = $"Datos disponibles: {datos.Metricas.TotalAvisos:N0} avisos en {datos.DepartamentosList.Count} departamentos. Indemnización: S/ {datos.Metricas.MontoIndemnizado:N2}. Use preguntas sobre avisos, indemnizaciones, desembolsos o departamentos.";
+
+        IsQuerying = false;
+    }
+}
