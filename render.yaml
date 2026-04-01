@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: app-sac-net
+    runtime: docker
+    repo: https://github.com/ivanmena2021/app-sac-net
+    branch: master
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
