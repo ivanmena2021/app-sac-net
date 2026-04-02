@@ -44,7 +44,7 @@
     </div>
 
     <div class="text-center mt-3">
-        @if (MidagriStream != null && SiniestrosStream != null)
+        @if (MidagriBytes != null && SiniestrosBytes != null)
         {
             <button class="btn btn-primary btn-lg px-5" @onclick="ProcessData" disabled="@IsProcessing">
                 @if (IsProcessing)
@@ -131,8 +131,8 @@ else
     public static string? DataSource { get; set; }
     public static bool IsDataLoaded => SharedDatos != null;
 
-    private MemoryStream? MidagriStream;
-    private MemoryStream? SiniestrosStream;
+    private byte[]? MidagriBytes;
+    private byte[]? SiniestrosBytes;
     private string? MidagriFileName;
     private string? SiniestrosFileName;
     private string? ErrorMessage;
@@ -146,29 +146,40 @@ else
         new() { Label = "Listo", Status = "pending" },
     };
 
+    private async Task<byte[]> ReadFileToBytes(IBrowserFile file)
+    {
+        // Read file in chunks with large buffer to avoid SignalR truncation
+        const long maxSize = 50 * 1024 * 1024; // 50 MB
+        await using var stream = file.OpenReadStream(maxAllowedSize: maxSize);
+        using var ms = new MemoryStream();
+        var buffer = new byte[512 * 1024]; // 512 KB buffer
+        int bytesRead;
+        while ((bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+        {
+            ms.Write(buffer, 0, bytesRead);
+        }
+        return ms.ToArray();
+    }
+
     private async Task OnMidagriFileSelected(InputFileChangeEventArgs e)
     {
         MidagriFileName = e.File.Name;
-        MidagriStream = new MemoryStream();
-        await e.File.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024).CopyToAsync(MidagriStream);
-        MidagriStream.Position = 0;
+        MidagriBytes = await ReadFileToBytes(e.File);
         CurrentSteps[0].Status = "done";
-        if (SiniestrosStream != null) CurrentSteps[1].Status = "done";
+        if (SiniestrosBytes != null) CurrentSteps[1].Status = "done";
     }
 
     private async Task OnSiniestrosFileSelected(InputFileChangeEventArgs e)
     {
         SiniestrosFileName = e.File.Name;
-        SiniestrosStream = new MemoryStream();
-        await e.File.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024).CopyToAsync(SiniestrosStream);
-        SiniestrosStream.Position = 0;
+        SiniestrosBytes = await ReadFileToBytes(e.File);
         CurrentSteps[1].Status = "done";
-        if (MidagriStream != null) CurrentSteps[0].Status = "done";
+        if (MidagriBytes != null) CurrentSteps[0].Status = "done";
     }
 
     private async Task ProcessData()
     {
-        if (MidagriStream == null || SiniestrosStream == null) return;
+        if (MidagriBytes == null || SiniestrosBytes == null) return;
         IsProcessing = true;
         ErrorMessage = null;
         CurrentSteps[2].Status = "active";
@@ -176,16 +187,13 @@ else
 
         try
         {
-            // Copy to byte arrays to avoid stream threading issues
-            MidagriStream.Position = 0;
-            SiniestrosStream.Position = 0;
-            var midagriBytes = MidagriStream.ToArray();
-            var siniestrosBytes = SiniestrosStream.ToArray();
+            var mb = MidagriBytes;
+            var sb = SiniestrosBytes;
 
             await Task.Run(() =>
             {
-                using var ms1 = new MemoryStream(midagriBytes);
-                using var ms2 = new MemoryStream(siniestrosBytes);
+                using var ms1 = new MemoryStream(mb);
+                using var ms2 = new MemoryStream(sb);
                 SharedDatos = DataProcessor.ProcessDynamicData(ms1, ms2);
             });
             UpdateTimestamp = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
@@ -210,8 +218,8 @@ else
         SharedDatos = null;
         UpdateTimestamp = null;
         DataSource = null;
-        MidagriStream = null;
-        SiniestrosStream = null;
+        MidagriBytes = null;
+        SiniestrosBytes = null;
         MidagriFileName = null;
         SiniestrosFileName = null;
         ErrorMessage = null;
