@@ -1,25 +1,71 @@
 namespace Infrastructure.ExcelReader;
 
+using System.Data;
 using System.Globalization;
+using System.Text;
 using Application.Contracts.Repositories;
 using Domain.Entities;
-using ClosedXML.Excel;
+using ExcelDataReader;
 
 public class ExcelReaderRepository : IExcelReaderRepository
 {
+    static ExcelReaderRepository()
+    {
+        // Required for ExcelDataReader on .NET Core
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+    }
+
     public List<Siniestro> ReadMidagriExcel(Stream fileStream)
     {
-        using var workbook = new XLWorkbook(fileStream);
-        var ws = workbook.Worksheet(1);
-        var rows = ws.RangeUsed()?.RowsUsed().ToList() ?? new List<IXLRangeRow>();
-        if (rows.Count == 0) return new List<Siniestro>();
+        return ReadExcel(fileStream);
+    }
 
-        // Find header row (contains "CAMPAÑA" or "CÓDIGO DE AVISO")
-        int headerRowIdx = 0;
-        for (int i = 0; i < Math.Min(rows.Count, 5); i++)
+    public List<Siniestro> ReadSiniestrosExcel(Stream fileStream)
+    {
+        return ReadExcel(fileStream);
+    }
+
+    private static List<Siniestro> ReadExcel(Stream fileStream)
+    {
+        // Copy to MemoryStream if not seekable (Blazor uploads)
+        Stream workStream = fileStream;
+        if (!fileStream.CanSeek)
         {
-            var vals = rows[i].CellsUsed().Select(c => c.GetString().Trim().ToUpper()).ToList();
-            if (vals.Any(v => v.Contains("CAMPAÑA") || v.Contains("CODIGO DE AVISO") || v.Contains("CÓDIGO DE AVISO")))
+            var ms = new MemoryStream();
+            fileStream.CopyTo(ms);
+            ms.Position = 0;
+            workStream = ms;
+        }
+        else
+        {
+            fileStream.Position = 0;
+        }
+
+        using var reader = ExcelReaderFactory.CreateReader(workStream);
+        var ds = reader.AsDataSet(new ExcelDataSetConfiguration
+        {
+            ConfigureDataTable = _ => new ExcelDataTableConfiguration
+            {
+                UseHeaderRow = false // We'll detect header ourselves
+            }
+        });
+
+        if (ds.Tables.Count == 0) return new List<Siniestro>();
+        var dt = ds.Tables[0];
+        if (dt.Rows.Count == 0) return new List<Siniestro>();
+
+        // Find header row (contains "CAMPAÑA" or "CÓDIGO DE AVISO" or "DEPARTAMENTO")
+        int headerRowIdx = 0;
+        for (int i = 0; i < Math.Min(dt.Rows.Count, 10); i++)
+        {
+            var rowVals = new List<string>();
+            for (int c = 0; c < dt.Columns.Count; c++)
+            {
+                var v = dt.Rows[i][c]?.ToString()?.Trim().ToUpper() ?? "";
+                rowVals.Add(v);
+            }
+            if (rowVals.Any(v => v.Contains("CAMPAÑA") || v.Contains("CODIGO DE AVISO") ||
+                                v.Contains("CÓDIGO DE AVISO") || v == "DEPARTAMENTO"))
             {
                 headerRowIdx = i;
                 break;
@@ -27,36 +73,42 @@ public class ExcelReaderRepository : IExcelReaderRepository
         }
 
         // Map header columns
-        var headerCells = rows[headerRowIdx].CellsUsed().ToList();
         var colMap = new Dictionary<int, string>();
-        foreach (var cell in headerCells)
+        for (int c = 0; c < dt.Columns.Count; c++)
         {
-            var colName = MapColumnName(cell.GetString().Trim().ToUpper());
-            if (!string.IsNullOrEmpty(colName))
-                colMap[cell.Address.ColumnNumber] = colName;
+            var headerVal = dt.Rows[headerRowIdx][c]?.ToString()?.Trim().ToUpper() ?? "";
+            if (string.IsNullOrEmpty(headerVal)) continue;
+            var mapped = MapColumnName(headerVal);
+            if (!string.IsNullOrEmpty(mapped) && !colMap.ContainsValue(mapped))
+                colMap[c] = mapped;
         }
 
         // Read data rows
         var result = new List<Siniestro>();
-        for (int i = headerRowIdx + 1; i < rows.Count; i++)
+        for (int i = headerRowIdx + 1; i < dt.Rows.Count; i++)
         {
             var siniestro = new Siniestro();
             bool hasData = false;
 
             foreach (var kvp in colMap)
             {
-                var cell = ws.Cell(rows[i].RowNumber(), kvp.Key);
-                var value = cell.GetString().Trim();
-                if (string.IsNullOrEmpty(value) || value == "-" || value.ToUpper() == "NAN") continue;
+                var cellValue = dt.Rows[i][kvp.Key];
+                if (cellValue == null || cellValue == DBNull.Value) continue;
+
+                var strValue = cellValue.ToString()?.Trim() ?? "";
+                if (string.IsNullOrEmpty(strValue) || strValue == "-" ||
+                    strValue.Equals("NAN", StringComparison.OrdinalIgnoreCase)) continue;
+
                 hasData = true;
-                SetSiniestroProperty(siniestro, kvp.Value, value, cell);
+                SetSiniestroProperty(siniestro, kvp.Value, strValue, cellValue);
             }
 
             if (hasData && !string.IsNullOrEmpty(siniestro.Departamento) &&
-                siniestro.Departamento.ToUpper() != "NAN" && siniestro.Departamento.ToUpper() != "NONE")
+                !siniestro.Departamento.Equals("NAN", StringComparison.OrdinalIgnoreCase) &&
+                !siniestro.Departamento.Equals("NONE", StringComparison.OrdinalIgnoreCase))
             {
                 siniestro.Departamento = siniestro.Departamento.Trim().ToUpper();
-                siniestro.TipoSiniestro = siniestro.TipoSiniestro.Trim().ToUpper();
+                siniestro.TipoSiniestro = (siniestro.TipoSiniestro ?? "").Trim().ToUpper();
                 result.Add(siniestro);
             }
         }
@@ -64,15 +116,8 @@ public class ExcelReaderRepository : IExcelReaderRepository
         return result;
     }
 
-    public List<Siniestro> ReadSiniestrosExcel(Stream fileStream)
-    {
-        // Same logic as ReadMidagriExcel - the normalization is identical
-        return ReadMidagriExcel(fileStream);
-    }
-
     private static string MapColumnName(string header)
     {
-        // Port ALL the column mappings from Python _normalize_midagri
         if (header.Contains("CAMPAÑA")) return "CAMPANA";
         if (header.Contains("CÓDIGO DE AVISO") || header.Contains("CODIGO DE AVISO")) return "CODIGO_AVISO";
         if (header == "DEPARTAMENTO") return "DEPARTAMENTO";
@@ -107,71 +152,84 @@ public class ExcelReaderRepository : IExcelReaderRepository
         if (header.Contains("FECHA DESEMBOLSO")) return "FECHA_DESEMBOLSO";
         if (header.Contains("PRIORIZADO")) return "PRIORIZADO";
         if (header.Contains("OBSERVACI")) return "OBSERVACION";
+        if (header.Contains("FECHA PROGRAMACION") || header.Contains("FECHA DE PROGRAMACION")) return "FECHA_PROGRAMACION";
+        if (header.Contains("FECHA AJUSTE") || header.Contains("FECHA DE AJUSTE")) return "FECHA_AJUSTE";
+        if (header.Contains("REPROGRAMACION") || header.Contains("REPROGRAMACIÓN")) return "FECHA_REPROGRAMACION";
         return string.Empty;
     }
 
-    private static void SetSiniestroProperty(Siniestro s, string colName, string value, IXLCell cell)
+    private static void SetSiniestroProperty(Siniestro s, string colName, string strValue, object rawValue)
     {
         switch (colName)
         {
-            case "CAMPANA": s.Campana = value; break;
-            case "CODIGO_AVISO": s.CodigoAviso = value; break;
-            case "DEPARTAMENTO": s.Departamento = value; break;
-            case "PROVINCIA": s.Provincia = value; break;
-            case "DISTRITO": s.Distrito = value; break;
-            case "SECTOR_ESTADISTICO": s.SectorEstadistico = value; break;
-            case "TIPO_CULTIVO": s.TipoCultivo = value; break;
-            case "FENOLOGIA": s.Fenologia = value; break;
-            case "FECHA_SIEMBRA": s.FechaSiembra = TryParseDate(value, cell); break;
-            case "FECHA_COSECHA": s.FechaCosecha = TryParseDate(value, cell); break;
-            case "SUP_SEMBRADA": s.SupSembrada = TryParseDouble(value); break;
-            case "SUP_ASEGURADA": s.SupAsegurada = TryParseDouble(value); break;
-            case "TIPO_SINIESTRO": s.TipoSiniestro = value; break;
-            case "FECHA_SINIESTRO": s.FechaSiniestro = TryParseDate(value, cell); break;
-            case "FECHA_AVISO": s.FechaAviso = TryParseDate(value, cell); break;
-            case "FECHA_ATENCION": s.FechaAtencion = TryParseDate(value, cell); break;
-            case "ESTADO_SINIESTRO": s.EstadoSiniestro = value; break;
-            case "ESTADO_INSPECCION": s.EstadoInspeccion = value; break;
-            case "PRIMA_NETA_DPTO": s.PrimaNetaDpto = TryParseDouble(value); break;
-            case "TIPO_COBERTURA": s.TipoCobertura = value; break;
-            case "SUP_AFECTADA": s.SupAfectada = TryParseDouble(value); break;
-            case "SUP_PERDIDA": s.SupPerdida = TryParseDouble(value); break;
-            case "DICTAMEN": s.Dictamen = value; break;
-            case "SUP_INDEMNIZADA": s.SupIndemnizada = TryParseDouble(value); break;
-            case "INDEMNIZACION": s.Indemnizacion = TryParseDouble(value); break;
-            case "MONTO_DESEMBOLSADO": s.MontoDesembolsado = TryParseDouble(value); break;
-            case "SUP_DESEMBOLSO": s.SupDesembolso = TryParseDouble(value); break;
-            case "N_PRODUCTORES": s.NProductores = TryParseDouble(value); break;
-            case "CODIGO_PADRON": s.CodigoPadron = value; break;
-            case "FECHA_ENVIO_DRAS": s.FechaEnvioDras = TryParseDate(value, cell); break;
-            case "FECHA_VALIDACION": s.FechaValidacion = TryParseDate(value, cell); break;
-            case "FECHA_DESEMBOLSO": s.FechaDesembolso = TryParseDate(value, cell); break;
-            case "PRIORIZADO": s.Priorizado = value; break;
-            case "OBSERVACION": s.Observacion = value; break;
+            case "CAMPANA": s.Campana = strValue; break;
+            case "CODIGO_AVISO": s.CodigoAviso = strValue; break;
+            case "DEPARTAMENTO": s.Departamento = strValue; break;
+            case "PROVINCIA": s.Provincia = strValue; break;
+            case "DISTRITO": s.Distrito = strValue; break;
+            case "SECTOR_ESTADISTICO": s.SectorEstadistico = strValue; break;
+            case "TIPO_CULTIVO": s.TipoCultivo = strValue; break;
+            case "FENOLOGIA": s.Fenologia = strValue; break;
+            case "FECHA_SIEMBRA": s.FechaSiembra = TryParseDate(strValue, rawValue); break;
+            case "FECHA_COSECHA": s.FechaCosecha = TryParseDate(strValue, rawValue); break;
+            case "SUP_SEMBRADA": s.SupSembrada = TryParseDouble(strValue, rawValue); break;
+            case "SUP_ASEGURADA": s.SupAsegurada = TryParseDouble(strValue, rawValue); break;
+            case "TIPO_SINIESTRO": s.TipoSiniestro = strValue; break;
+            case "FECHA_SINIESTRO": s.FechaSiniestro = TryParseDate(strValue, rawValue); break;
+            case "FECHA_AVISO": s.FechaAviso = TryParseDate(strValue, rawValue); break;
+            case "FECHA_ATENCION": s.FechaAtencion = TryParseDate(strValue, rawValue); break;
+            case "ESTADO_SINIESTRO": s.EstadoSiniestro = strValue; break;
+            case "ESTADO_INSPECCION": s.EstadoInspeccion = strValue; break;
+            case "PRIMA_NETA_DPTO": s.PrimaNetaDpto = TryParseDouble(strValue, rawValue); break;
+            case "TIPO_COBERTURA": s.TipoCobertura = strValue; break;
+            case "SUP_AFECTADA": s.SupAfectada = TryParseDouble(strValue, rawValue); break;
+            case "SUP_PERDIDA": s.SupPerdida = TryParseDouble(strValue, rawValue); break;
+            case "DICTAMEN": s.Dictamen = strValue; break;
+            case "SUP_INDEMNIZADA": s.SupIndemnizada = TryParseDouble(strValue, rawValue); break;
+            case "INDEMNIZACION": s.Indemnizacion = TryParseDouble(strValue, rawValue); break;
+            case "MONTO_DESEMBOLSADO": s.MontoDesembolsado = TryParseDouble(strValue, rawValue); break;
+            case "SUP_DESEMBOLSO": s.SupDesembolso = TryParseDouble(strValue, rawValue); break;
+            case "N_PRODUCTORES": s.NProductores = TryParseDouble(strValue, rawValue); break;
+            case "CODIGO_PADRON": s.CodigoPadron = strValue; break;
+            case "FECHA_ENVIO_DRAS": s.FechaEnvioDras = TryParseDate(strValue, rawValue); break;
+            case "FECHA_VALIDACION": s.FechaValidacion = TryParseDate(strValue, rawValue); break;
+            case "FECHA_DESEMBOLSO": s.FechaDesembolso = TryParseDate(strValue, rawValue); break;
+            case "PRIORIZADO": s.Priorizado = strValue; break;
+            case "OBSERVACION": s.Observacion = strValue; break;
         }
     }
 
-    private static double TryParseDouble(string value)
+    private static double TryParseDouble(string strValue, object rawValue)
     {
-        if (string.IsNullOrWhiteSpace(value) || value == "-") return 0;
-        if (double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var result))
+        if (string.IsNullOrWhiteSpace(strValue) || strValue == "-") return 0;
+        // Try raw value first (preserves numeric precision)
+        if (rawValue is double d) return d;
+        if (rawValue is decimal dec) return (double)dec;
+        if (rawValue is int intVal) return intVal;
+        if (rawValue is long longVal) return longVal;
+        if (rawValue is float f) return f;
+        // Parse string
+        if (double.TryParse(strValue, NumberStyles.Any, CultureInfo.InvariantCulture, out var result))
+            return result;
+        // Try with comma as decimal separator
+        if (double.TryParse(strValue.Replace(",", "."), NumberStyles.Any, CultureInfo.InvariantCulture, out result))
             return result;
         return 0;
     }
 
-    private static DateTime? TryParseDate(string value, IXLCell cell)
+    private static DateTime? TryParseDate(string strValue, object rawValue)
     {
-        // Try cell's date value first
-        if (cell.DataType == XLDataType.DateTime)
-        {
-            try { return cell.GetDateTime(); } catch { }
-        }
-        // Try parsing string
-        if (DateTime.TryParseExact(value, new[] { "dd/MM/yyyy", "d/M/yyyy", "yyyy-MM-dd", "MM/dd/yyyy" },
-            CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
-            return dt;
-        if (DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out dt))
-            return dt;
+        // Try raw value first (ExcelDataReader returns DateTime directly for date cells)
+        if (rawValue is DateTime dt) return dt;
+        if (string.IsNullOrWhiteSpace(strValue)) return null;
+        // Try common formats
+        if (DateTime.TryParseExact(strValue,
+            new[] { "dd/MM/yyyy", "d/M/yyyy", "yyyy-MM-dd", "MM/dd/yyyy", "dd-MM-yyyy",
+                    "dd/MM/yyyy HH:mm:ss", "d/M/yyyy H:mm:ss", "yyyy-MM-dd HH:mm:ss" },
+            CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
+            return parsed;
+        if (DateTime.TryParse(strValue, CultureInfo.InvariantCulture, DateTimeStyles.None, out parsed))
+            return parsed;
         return null;
     }
 }
