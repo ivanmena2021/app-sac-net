@@ -3,6 +3,9 @@
 @inject IWordReportService WordService
 @inject IExcelReportService ExcelService
 @inject IDataProcessorService DataProcessor
+@inject IPdfReportService PdfService
+@inject IExcelEnhancedService ExcelEnhancedService
+@inject IWordOperatividadService OperatividadService
 @inject IJSRuntime JS
 @using WebApp.Components.Custom
 
@@ -95,13 +98,34 @@ else
 
             case "operatividad":
                 <div class="tab-intro">
-                    <p>Reporte de Operatividad del SAC con gráficos embebidos y análisis por empresa aseguradora.</p>
+                    <p>Reporte de Operatividad del SAC con análisis por empresa aseguradora y tablas de siniestralidad.</p>
                 </div>
                 <div class="row mt-3">
-                    <div class="col-md-6">
-                        <button class="btn btn-primary w-100" disabled>⚡ Generar Operatividad (próximamente)</button>
+                    <div class="col-md-4">
+                        <button class="btn btn-primary w-100" @onclick="GenOperatividad" disabled="@IsGenerating">
+                            @(IsGenerating ? "Generando..." : "⚡ Generar Operatividad")
+                        </button>
+                    </div>
+                    <div class="col-md-4">
+                        @if (DocOperatividad != null)
+                        {
+                            <button class="btn btn-success w-100" @onclick="() => Download(DocOperatividad, DocOperatividadName, DocxMime)">⬇️ Descargar Operatividad</button>
+                        }
+                    </div>
+                    <div class="col-md-4">
+                        <button class="btn btn-outline-primary w-100" @onclick="GenPdf" disabled="@IsGenerating">
+                            @(IsGenerating ? "Generando..." : "📊 Generar PDF Ejecutivo")
+                        </button>
                     </div>
                 </div>
+                @if (PdfBytes != null)
+                {
+                    <div class="row mt-2">
+                        <div class="col-md-4 offset-md-8">
+                            <button class="btn btn-success w-100" @onclick="() => Download(PdfBytes, PdfName, PdfMime)">⬇️ Descargar PDF</button>
+                        </div>
+                    </div>
+                }
                 break;
 
             case "eme":
@@ -188,9 +212,14 @@ else
     private string DocDeptoName = "";
     private byte[]? XlsEme;
     private string XlsEmeName = "";
+    private byte[]? DocOperatividad;
+    private string DocOperatividadName = "";
+    private byte[]? PdfBytes;
+    private string PdfName = "";
 
     private const string DocxMime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     private const string XlsxMime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    private const string PdfMime = "application/pdf";
 
     private Dictionary<string, string> Tabs = new()
     {
@@ -252,6 +281,34 @@ else
             XlsEme = await Task.Run(() => ExcelService.GenerateReporteEme(Datos));
             XlsEmeName = $"formato_reporte_EME_{DateTime.Now:dd_MM_yyyy}.xlsx";
             SuccessMsg = "✅ Reporte EME generado exitosamente";
+        }
+        catch (Exception ex) { ErrorMsg = $"Error: {ex.Message}"; }
+        finally { IsGenerating = false; StateHasChanged(); }
+    }
+
+    private async Task GenOperatividad()
+    {
+        if (Datos == null) return;
+        IsGenerating = true; ErrorMsg = null; SuccessMsg = null; StateHasChanged();
+        try
+        {
+            DocOperatividad = await Task.Run(() => OperatividadService.GenerateOperatividadDocx(Datos));
+            DocOperatividadName = $"AM_Operatividad_SAC_{DateTime.Now:dd_MM_yyyy}.docx";
+            SuccessMsg = "✅ Reporte de Operatividad generado";
+        }
+        catch (Exception ex) { ErrorMsg = $"Error: {ex.Message}"; }
+        finally { IsGenerating = false; StateHasChanged(); }
+    }
+
+    private async Task GenPdf()
+    {
+        if (Datos == null) return;
+        IsGenerating = true; ErrorMsg = null; SuccessMsg = null; StateHasChanged();
+        try
+        {
+            PdfBytes = await Task.Run(() => PdfService.GenerateExecutivePdf(Datos));
+            PdfName = $"Resumen_Ejecutivo_SAC_{DateTime.Now:dd_MM_yyyy}.pdf";
+            SuccessMsg = "✅ PDF Ejecutivo generado";
         }
         catch (Exception ex) { ErrorMsg = $"Error: {ex.Message}"; }
         finally { IsGenerating = false; StateHasChanged(); }
