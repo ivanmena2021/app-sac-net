@@ -27,28 +27,47 @@ public class ExcelReaderRepository : IExcelReaderRepository
 
     private static List<Siniestro> ReadExcel(Stream fileStream)
     {
-        // Copy to MemoryStream if not seekable (Blazor uploads)
-        Stream workStream = fileStream;
-        if (!fileStream.CanSeek)
+        // Always copy to a fresh MemoryStream for reliable reading
+        byte[] fileBytes;
+        if (fileStream is MemoryStream inputMs)
         {
-            var ms = new MemoryStream();
-            fileStream.CopyTo(ms);
-            ms.Position = 0;
-            workStream = ms;
+            fileBytes = inputMs.ToArray();
         }
         else
         {
-            fileStream.Position = 0;
+            using var tempMs = new MemoryStream();
+            fileStream.CopyTo(tempMs);
+            fileBytes = tempMs.ToArray();
         }
 
-        using var reader = ExcelReaderFactory.CreateReader(workStream);
-        var ds = reader.AsDataSet(new ExcelDataSetConfiguration
+        if (fileBytes.Length == 0)
+            throw new InvalidOperationException("El archivo está vacío.");
+
+        using var workStream = new MemoryStream(fileBytes);
+
+        IExcelDataReader reader;
+        try
         {
-            ConfigureDataTable = _ => new ExcelDataTableConfiguration
+            reader = ExcelReaderFactory.CreateReader(workStream);
+        }
+        catch
+        {
+            // Fallback: try specifically as OpenXml (.xlsx)
+            workStream.Position = 0;
+            reader = ExcelReaderFactory.CreateOpenXmlReader(workStream);
+        }
+
+        DataSet ds;
+        using (reader)
+        {
+            ds = reader.AsDataSet(new ExcelDataSetConfiguration
             {
-                UseHeaderRow = false // We'll detect header ourselves
-            }
-        });
+                ConfigureDataTable = _ => new ExcelDataTableConfiguration
+                {
+                    UseHeaderRow = false
+                }
+            });
+        }
 
         if (ds.Tables.Count == 0) return new List<Siniestro>();
         var dt = ds.Tables[0];

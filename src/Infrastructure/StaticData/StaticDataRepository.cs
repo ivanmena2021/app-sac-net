@@ -55,12 +55,28 @@ public class StaticDataRepository : IStaticDataRepository
     public List<MateriaAsegurada> LoadMateriaAsegurada()
     {
         var filePath = Path.Combine(_dataPath, "Materia_Asegurada_SAC_2025-2026.xlsx");
-        using var stream = File.OpenRead(filePath);
-        using var reader = ExcelReaderFactory.CreateReader(stream);
-        var ds = reader.AsDataSet(new ExcelDataSetConfiguration
+        var fileBytes = File.ReadAllBytes(filePath);
+        using var stream = new MemoryStream(fileBytes);
+
+        IExcelDataReader reader;
+        try
         {
-            ConfigureDataTable = _ => new ExcelDataTableConfiguration { UseHeaderRow = false }
-        });
+            reader = ExcelReaderFactory.CreateReader(stream);
+        }
+        catch
+        {
+            stream.Position = 0;
+            reader = ExcelReaderFactory.CreateOpenXmlReader(stream);
+        }
+
+        DataSet ds;
+        using (reader)
+        {
+            ds = reader.AsDataSet(new ExcelDataSetConfiguration
+            {
+                ConfigureDataTable = _ => new ExcelDataTableConfiguration { UseHeaderRow = false }
+            });
+        }
 
         if (ds.Tables.Count == 0) return new List<MateriaAsegurada>();
         var dt = ds.Tables[0];
