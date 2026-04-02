@@ -53,11 +53,36 @@ public class DataProcessorService : IDataProcessorService
     public DatosNacionalesDto ProcessDynamicData(Stream midagriStream, Stream siniestrosStream)
     {
         // 1. Read Excel files
-        var midagri = _excelReader.ReadMidagriExcel(midagriStream);
-        var siniestros = _excelReader.ReadSiniestrosExcel(siniestrosStream);
+        List<Siniestro> midagri;
+        try
+        {
+            midagri = _excelReader.ReadMidagriExcel(midagriStream);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Error leyendo archivo MIDAGRI: {ex.Message}", ex);
+        }
+
+        List<Siniestro> siniestros;
+        try
+        {
+            siniestros = _excelReader.ReadSiniestrosExcel(siniestrosStream);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Error leyendo archivo Siniestros: {ex.Message}", ex);
+        }
 
         // 2. Load static materia asegurada
-        var materia = _staticData.LoadMateriaAsegurada();
+        List<MateriaAsegurada> materia;
+        try
+        {
+            materia = _staticData.LoadMateriaAsegurada();
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Error leyendo datos estáticos (Materia Asegurada): {ex.Message}", ex);
+        }
 
         // 3. Normalize TIPO_SINIESTRO on both datasets
         foreach (var s in midagri)
