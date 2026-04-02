@@ -21,9 +21,10 @@ FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
 COPY --from=build /app/publish .
 
-# Render.com uses PORT env variable
-ENV ASPNETCORE_URLS=http://+:${PORT:-10000}
+# Render.com sets PORT env var at runtime
 ENV ASPNETCORE_ENVIRONMENT=Production
 
 EXPOSE 10000
-ENTRYPOINT ["dotnet", "WebApp.dll"]
+
+# Use shell form so $PORT is expanded at runtime
+CMD dotnet WebApp.dll --urls "http://+:${PORT:-10000}"

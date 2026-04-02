@@ -13,6 +13,12 @@ builder.Services.AddRazorComponents()
 builder.Services.AddScoped<IDataProcessorService, DataProcessorService>();
 builder.Services.AddInfrastructure();
 
+// Increase SignalR message size for large file uploads
+builder.Services.AddSignalR(o =>
+{
+    o.MaximumReceiveMessageSize = 50 * 1024 * 1024; // 50 MB
+});
+
 var app = builder.Build();
 
 if (!app.Environment.IsDevelopment())
@@ -21,7 +27,6 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseAntiforgery();
 
