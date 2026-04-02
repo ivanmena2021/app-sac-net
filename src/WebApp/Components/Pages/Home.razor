@@ -176,11 +176,17 @@ else
 
         try
         {
+            // Copy to byte arrays to avoid stream threading issues
+            MidagriStream.Position = 0;
+            SiniestrosStream.Position = 0;
+            var midagriBytes = MidagriStream.ToArray();
+            var siniestrosBytes = SiniestrosStream.ToArray();
+
             await Task.Run(() =>
             {
-                MidagriStream.Position = 0;
-                SiniestrosStream.Position = 0;
-                SharedDatos = DataProcessor.ProcessDynamicData(MidagriStream, SiniestrosStream);
+                using var ms1 = new MemoryStream(midagriBytes);
+                using var ms2 = new MemoryStream(siniestrosBytes);
+                SharedDatos = DataProcessor.ProcessDynamicData(ms1, ms2);
             });
             UpdateTimestamp = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
             DataSource = "manual";
