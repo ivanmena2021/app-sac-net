@@ -1,6 +1,7 @@
 @page "/semaforo"
 @rendermode InteractiveServer
 @inject ISemaforoService SemaforoService
+@inject IJSRuntime JS
 @using WebApp.Components.Custom
 
 <PageTitle>Semáforo de Alertas — SAC</PageTitle>
@@ -13,61 +14,94 @@
 }
 else
 {
-    var datos = Home.SharedDatos;
+    @if (Result == null)
+    {
+        <button class="btn btn-primary" @onclick="ComputeSemaforo">🔍 Calcular Semáforo</button>
+    }
+    else
+    {
+        <!-- Global summary -->
+        <div class="row mt-3">
+            <div class="col-md-3"><MetricCard Label="Total Avisos Analizados" Value="@Result.TotalAvisos.ToString("N0")" Accent="blue" /></div>
+            <div class="col-md-3"><MetricCard Label="🟢 En plazo (Verde)" Value="@Result.Verde.ToString("N0")" Accent="green" /></div>
+            <div class="col-md-3"><MetricCard Label="🟡 En riesgo (Ámbar)" Value="@Result.Ambar.ToString("N0")" Accent="amber" /></div>
+            <div class="col-md-3"><MetricCard Label="🔴 Vencido (Rojo)" Value="@Result.Rojo.ToString("N0")" Accent="red" /></div>
+        </div>
 
-    <div class="alert alert-info">
-        🚦 El semáforo clasifica cada aviso de siniestro según el cumplimiento de plazos en 6 etapas del proceso SAC:
-        Atención, Programación, Ajuste, Reprogramación, Validación y Pago.
-    </div>
+        <!-- Progress bar -->
+        <div class="progress mt-3" style="height: 30px;">
+            @{
+                var total = (double)Result.TotalAvisos;
+                var pVerde = total > 0 ? Result.Verde / total * 100 : 0;
+                var pAmbar = total > 0 ? Result.Ambar / total * 100 : 0;
+                var pRojo = total > 0 ? Result.Rojo / total * 100 : 0;
+            }
+            <div class="progress-bar bg-success" style="width: @pVerde.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)%">@Result.Verde</div>
+            <div class="progress-bar bg-warning" style="width: @pAmbar.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)%">@Result.Ambar</div>
+            <div class="progress-bar bg-danger" style="width: @pRojo.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)%">@Result.Rojo</div>
+        </div>
 
-    <!-- Basic alert summary based on available data -->
-    <div class="row mt-3">
-        @{
-            var total = datos.Midagri.Count;
-            var cerrados = datos.Midagri.Count(s => s.EstadoInspeccion.ToUpper() == "CERRADO");
-            var pendientes = total - cerrados;
-            var conDesembolso = datos.Midagri.Count(s => s.MontoDesembolsado > 0);
-            var sinDesembolso = cerrados - conDesembolso;
-        }
-        <div class="col-md-3"><MetricCard Label="Total Avisos" Value="@total.ToString("N0")" Accent="blue" /></div>
-        <div class="col-md-3"><MetricCard Label="Evaluados (Cerrados)" Value="@cerrados.ToString("N0")" Delta="@($"{(total > 0 ? (double)cerrados/total*100 : 0):F1}%")" Accent="green" /></div>
-        <div class="col-md-3"><MetricCard Label="Pendientes Evaluación" Value="@pendientes.ToString("N0")" Accent="@(pendientes > total * 0.3 ? "red" : "amber")" /></div>
-        <div class="col-md-3"><MetricCard Label="Pendientes Desembolso" Value="@sinDesembolso.ToString("N0")" Accent="amber" /></div>
-    </div>
+        <!-- By department -->
+        <h5 class="mt-4">Estado por Departamento</h5>
+        <div class="table-responsive" style="max-height:500px;overflow-y:auto;">
+            <table class="table table-sm table-striped table-bordered">
+                <thead class="table-primary sticky-top">
+                    <tr><th>Departamento</th><th>Total</th><th>🟢 Verde</th><th>🟡 Ámbar</th><th>🔴 Rojo</th><th>% Riesgo</th><th>Estado</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var kvp in Result.PorDepartamento.OrderByDescending(x => x.Value.Rojo))
+                    {
+                        var d = kvp.Value;
+                        var pctRiesgo = d.Total > 0 ? (double)(d.Ambar + d.Rojo) / d.Total * 100 : 0;
+                        var emoji = d.Rojo > d.Total * 0.3 ? "🔴" : d.Ambar > d.Total * 0.3 ? "🟡" : "🟢";
+                        <tr>
+                            <td>@System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(kvp.Key.ToLower())</td>
+                            <td class="text-end">@d.Total</td>
+                            <td class="text-end text-success">@d.Verde</td>
+                            <td class="text-end text-warning">@d.Ambar</td>
+                            <td class="text-end text-danger">@d.Rojo</td>
+                            <td class="text-end">@($"{pctRiesgo:F1}%")</td>
+                            <td class="text-center">@emoji</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
 
-    <h5 class="mt-4">Estado por Departamento</h5>
-    <div class="table-responsive" style="max-height:500px;overflow-y:auto;">
-        <table class="table table-sm table-striped table-bordered">
-            <thead class="table-primary sticky-top">
-                <tr><th>Departamento</th><th>Avisos</th><th>Cerrados</th><th>% Avance</th><th>Con Desembolso</th><th>Estado</th></tr>
-            </thead>
-            <tbody>
-                @foreach (var depto in datos.DepartamentosList)
-                {
-                    var items = datos.Midagri.Where(s => s.Departamento == depto).ToList();
-                    var tot = items.Count;
-                    var cer = items.Count(s => s.EstadoInspeccion.ToUpper() == "CERRADO");
-                    var pct = tot > 0 ? (double)cer / tot * 100 : 0;
-                    var des = items.Count(s => s.MontoDesembolsado > 0);
-                    var emoji = pct >= 80 ? "🟢" : pct >= 50 ? "🟡" : "🔴";
+        <!-- Detail by stage -->
+        <h5 class="mt-4">Distribución por Etapa</h5>
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered">
+                <thead class="table-primary">
+                    <tr><th>Etapa</th><th>Avisos</th><th>🟢</th><th>🟡</th><th>🔴</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var etapa in Result.Rows.GroupBy(r => r.Etapa).OrderBy(g => g.Key))
+                    {
+                        <tr>
+                            <td>@etapa.Key</td>
+                            <td class="text-end">@etapa.Count()</td>
+                            <td class="text-end text-success">@etapa.Count(r => r.Alerta == "verde")</td>
+                            <td class="text-end text-warning">@etapa.Count(r => r.Alerta == "ambar")</td>
+                            <td class="text-end text-danger">@etapa.Count(r => r.Alerta == "rojo")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
 
-                    <tr>
-                        <td>@System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(depto.ToLower())</td>
-                        <td class="text-end">@tot</td>
-                        <td class="text-end">@cer</td>
-                        <td class="text-end">@($"{pct:F1}%")</td>
-                        <td class="text-end">@des</td>
-                        <td class="text-center">@emoji</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
-
-    <div class="alert alert-info mt-3">
-        🔔 La versión completa del semáforo con clasificación por 6 etapas y alertas por plazos
-        (verde/ámbar/rojo) se habilitará en una actualización futura.
-    </div>
+        <button class="btn btn-outline-secondary mt-3" @onclick="() => Result = null">🔄 Recalcular</button>
+    }
 }
 
 <SacFooter />
+
+@code {
+    private SemaforoResultDto? Result;
+
+    private void ComputeSemaforo()
+    {
+        if (Home.SharedDatos == null) return;
+        Result = SemaforoService.ComputeSemaforo(Home.SharedDatos);
+    }
+}

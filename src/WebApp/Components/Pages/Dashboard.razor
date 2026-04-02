@@ -1,5 +1,6 @@
 @page "/dashboard"
 @rendermode InteractiveServer
+@inject IExcelEnhancedService ExcelEnhancedService
 @inject IJSRuntime JS
 @using WebApp.Components.Custom
 
@@ -17,55 +18,71 @@ else
 
     <!-- Action buttons -->
     <div class="row mt-3 mb-3">
-        <div class="col-md-6">
-            <button class="btn btn-outline-primary w-100" @onclick="ExportExcel">
-                📥 Descargar consolidado Excel
+        <div class="col-md-4">
+            <button class="btn btn-outline-primary w-100" @onclick="ExportExcel" disabled="@IsExporting">
+                @(IsExporting ? "Exportando..." : "📥 Descargar consolidado Excel")
             </button>
         </div>
-        <div class="col-md-6">
+        <div class="col-md-4">
+            @if (ExcelBytes != null)
+            {
+                <button class="btn btn-success w-100" @onclick="DownloadExcel">⬇️ Descargar Excel</button>
+            }
+        </div>
+        <div class="col-md-4">
             <a href="/" class="btn btn-outline-secondary w-100">🔄 Nueva actualización</a>
         </div>
     </div>
 
     <!-- 8 KPI Metrics in 2 rows of 4 -->
     <div class="row">
-        <div class="col-md-3">
-            <MetricCard Label="Total Avisos" Value="@Datos.Metricas.TotalAvisos.ToString("N0")" Accent="blue" />
-        </div>
-        <div class="col-md-3">
-            <MetricCard Label="Avance Evaluación" Value="@($"{Datos.Metricas.PctAjustados:F1}%")" Delta="@($"{Datos.Metricas.TotalAjustados:N0} evaluados")" Accent="green" />
-        </div>
-        <div class="col-md-3">
-            <MetricCard Label="Indemnización (S/)" Value="@($"S/ {Datos.Metricas.MontoIndemnizado:N0}")" Accent="amber" />
-        </div>
-        <div class="col-md-3">
-            <MetricCard Label="Avance Desembolso" Value="@($"{Datos.Metricas.PctDesembolso:F1}%")" Delta="@($"S/ {Datos.Metricas.MontoDesembolsado:N0}")" Accent="green" />
-        </div>
+        <div class="col-md-3"><MetricCard Label="Total Avisos" Value="@Datos.Metricas.TotalAvisos.ToString("N0")" Accent="blue" /></div>
+        <div class="col-md-3"><MetricCard Label="Avance Evaluación" Value="@($"{Datos.Metricas.PctAjustados:F1}%")" Delta="@($"{Datos.Metricas.TotalAjustados:N0} evaluados")" Accent="green" /></div>
+        <div class="col-md-3"><MetricCard Label="Indemnización (S/)" Value="@($"S/ {Datos.Metricas.MontoIndemnizado:N0}")" Accent="amber" /></div>
+        <div class="col-md-3"><MetricCard Label="Avance Desembolso" Value="@($"{Datos.Metricas.PctDesembolso:F1}%")" Delta="@($"S/ {Datos.Metricas.MontoDesembolsado:N0}")" Accent="green" /></div>
     </div>
     <div class="row mt-2">
-        <div class="col-md-3">
-            <MetricCard Label="Ha Aseguradas" Value="@($"{Datos.Metricas.SupAsegurada:N0}")" Accent="blue" />
-        </div>
-        <div class="col-md-3">
-            <MetricCard Label="Ha Indemnizadas" Value="@($"{Datos.Metricas.HaIndemnizadas:N0}")" Accent="purple" />
-        </div>
-        <div class="col-md-3">
-            <MetricCard Label="Siniestralidad" Value="@($"{Datos.Metricas.IndiceSiniestralidad:F2}%")" Accent="@(Datos.Metricas.IndiceSiniestralidad > 70 ? "red" : Datos.Metricas.IndiceSiniestralidad > 50 ? "amber" : "green")" />
-        </div>
-        <div class="col-md-3">
-            <MetricCard Label="Productores Beneficiados" Value="@Datos.Metricas.ProductoresDesembolso.ToString("N0")" Accent="green" />
-        </div>
+        <div class="col-md-3"><MetricCard Label="Ha Aseguradas" Value="@($"{Datos.Metricas.SupAsegurada:N0}")" Accent="blue" /></div>
+        <div class="col-md-3"><MetricCard Label="Ha Indemnizadas" Value="@($"{Datos.Metricas.HaIndemnizadas:N0}")" Accent="purple" /></div>
+        <div class="col-md-3"><MetricCard Label="Siniestralidad" Value="@($"{Datos.Metricas.IndiceSiniestralidad:F2}%")" Accent="@(Datos.Metricas.IndiceSiniestralidad > 70 ? "red" : Datos.Metricas.IndiceSiniestralidad > 50 ? "amber" : "green")" /></div>
+        <div class="col-md-3"><MetricCard Label="Productores Beneficiados" Value="@Datos.Metricas.ProductoresDesembolso.ToString("N0")" Accent="green" /></div>
     </div>
 
     <!-- Quick Navigation -->
-    <div class="section-header mt-4">
-        <h5>🧭 Navegación rápida</h5>
-    </div>
+    <div class="section-header mt-4"><h5>🧭 Navegación rápida</h5></div>
     <div class="row mt-2">
         <div class="col-md-3"><a href="/consultas" class="btn btn-outline-primary w-100 mb-2">💬 Consultas</a></div>
         <div class="col-md-3"><a href="/mapa-calor" class="btn btn-outline-primary w-100 mb-2">🗺️ Mapa de Calor</a></div>
         <div class="col-md-3"><a href="/reportes" class="btn btn-outline-primary w-100 mb-2">📄 Reportes</a></div>
-        <div class="col-md-3"><a href="/semaforo" class="btn btn-outline-primary w-100 mb-2">🔔 Semáforo</a></div>
+        <div class="col-md-3"><a href="/semaforo" class="btn btn-outline-primary w-100 mb-2">🚦 Semáforo</a></div>
+    </div>
+
+    <!-- Top departments preview -->
+    <h5 class="mt-4">Top 10 Departamentos</h5>
+    <div class="table-responsive">
+        <table class="table table-sm table-striped table-bordered">
+            <thead class="table-primary">
+                <tr><th>#</th><th>Departamento</th><th>Avisos</th><th>Indemnización</th><th>Desembolso</th><th>Siniestralidad</th></tr>
+            </thead>
+            <tbody>
+                @{ int rank = 1; }
+                @foreach (var r in Datos.Cuadro2.Where(r => r.Departamento != "TOTAL").OrderByDescending(r => r.MontoIndemnizado).Take(10))
+                {
+                    var mat = Datos.Materia.FirstOrDefault(m => m.Departamento.Equals(r.Departamento, StringComparison.OrdinalIgnoreCase));
+                    var prima = mat?.PrimaNeta ?? 0;
+                    var sin = prima > 0 ? r.MontoIndemnizado / prima * 100 : 0;
+                    var sinEmoji = sin > 70 ? "🔴" : sin > 50 ? "🟡" : "🟢";
+                    <tr>
+                        <td>@(rank++)</td>
+                        <td>@System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(r.Departamento.ToLower())</td>
+                        <td class="text-end">@Datos.Midagri.Count(s => s.Departamento == r.Departamento)</td>
+                        <td class="text-end">S/ @r.MontoIndemnizado.ToString("N0")</td>
+                        <td class="text-end">S/ @r.MontoDesembolsado.ToString("N0")</td>
+                        <td class="text-end">@sinEmoji @($"{sin:F1}%")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
     </div>
 }
 
@@ -73,12 +90,28 @@ else
 
 @code {
     private DatosNacionalesDto? Datos => Home.SharedDatos;
+    private byte[]? ExcelBytes;
+    private bool IsExporting;
 
     private async Task ExportExcel()
     {
         if (Datos == null) return;
-        // Build simple consolidated Excel using ClosedXML via Infrastructure
-        // For now, show a message
-        await JS.InvokeVoidAsync("alert", "Funcionalidad de exportación Excel en desarrollo.");
+        IsExporting = true;
+        StateHasChanged();
+        try
+        {
+            ExcelBytes = await Task.Run(() => ExcelEnhancedService.GenerateEnhancedExcel(Datos));
+        }
+        catch { }
+        finally { IsExporting = false; StateHasChanged(); }
+    }
+
+    private async Task DownloadExcel()
+    {
+        if (ExcelBytes == null) return;
+        var name = $"Consolidado_SAC_2025-2026_{DateTime.Now:dd_MM_yyyy}.xlsx";
+        await JS.InvokeVoidAsync("downloadFile", name,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            Convert.ToBase64String(ExcelBytes));
     }
 }

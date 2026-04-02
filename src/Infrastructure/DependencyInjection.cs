@@ -20,6 +20,7 @@ public static class DependencyInjection
         services.AddScoped<IExcelEnhancedService, ExcelEnhancedGenerator>();
         services.AddScoped<IWordOperatividadService, WordOperatividadGenerator>();
         services.AddScoped<ISemaforoService, SemaforoService>();
+        services.AddScoped<IPptReportService, PptDinamicoGenerator>();
         return services;
     }
 }

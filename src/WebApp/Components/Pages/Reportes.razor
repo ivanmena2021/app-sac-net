@@ -6,6 +6,7 @@
 @inject IPdfReportService PdfService
 @inject IExcelEnhancedService ExcelEnhancedService
 @inject IWordOperatividadService OperatividadService
+@inject IPptReportService PptService
 @inject IJSRuntime JS
 @using WebApp.Components.Custom
 
@@ -155,7 +156,15 @@ else
                 </div>
                 <div class="row mt-3">
                     <div class="col-md-6">
-                        <button class="btn btn-primary w-100" disabled>⚡ Generar PPT Dinámica (próximamente)</button>
+                        <button class="btn btn-primary w-100" @onclick="GenPptDinamico" disabled="@IsGenerating">
+                            @(IsGenerating ? "Generando..." : "⚡ Generar PPT Dinámica")
+                        </button>
+                    </div>
+                    <div class="col-md-6">
+                        @if (PptDinamicoBytes != null)
+                        {
+                            <button class="btn btn-success w-100" @onclick="() => Download(PptDinamicoBytes, PptDinamicoName, PptxMime)">⬇️ Descargar PPT</button>
+                        }
                     </div>
                 </div>
                 break;
@@ -173,11 +182,28 @@ else
 
             case "historico":
                 <div class="tab-intro">
-                    <p>Análisis histórico de siniestralidad a lo largo de 5 campañas (2020-2026).</p>
+                    <p>Análisis histórico de siniestralidad por departamento.</p>
                 </div>
                 <div class="row mt-3">
-                    <div class="col-md-6">
-                        <button class="btn btn-primary w-100" disabled>⚡ Generar PPT Histórica (próximamente)</button>
+                    <div class="col-md-4">
+                        <select class="form-select" @bind="HistDepto">
+                            <option value="">-- Seleccionar departamento --</option>
+                            @foreach (var d in Datos.DepartamentosList)
+                            {
+                                <option value="@d">@ToTitle(d)</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <button class="btn btn-primary w-100" @onclick="GenPptHistorico" disabled="@(IsGenerating || string.IsNullOrEmpty(HistDepto))">
+                            @(IsGenerating ? "Generando..." : "⚡ Generar PPT Histórica")
+                        </button>
+                    </div>
+                    <div class="col-md-4">
+                        @if (PptHistoricoBytes != null)
+                        {
+                            <button class="btn btn-success w-100" @onclick="() => Download(PptHistoricoBytes, PptHistoricoName, PptxMime)">⬇️ Descargar PPT Histórica</button>
+                        }
                     </div>
                 </div>
                 break;
@@ -217,9 +243,16 @@ else
     private byte[]? PdfBytes;
     private string PdfName = "";
 
+    private byte[]? PptDinamicoBytes;
+    private string PptDinamicoName = "";
+    private byte[]? PptHistoricoBytes;
+    private string PptHistoricoName = "";
+    private string HistDepto = "";
+
     private const string DocxMime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     private const string XlsxMime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
     private const string PdfMime = "application/pdf";
+    private const string PptxMime = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
     private Dictionary<string, string> Tabs = new()
     {
@@ -309,6 +342,34 @@ else
             PdfBytes = await Task.Run(() => PdfService.GenerateExecutivePdf(Datos));
             PdfName = $"Resumen_Ejecutivo_SAC_{DateTime.Now:dd_MM_yyyy}.pdf";
             SuccessMsg = "✅ PDF Ejecutivo generado";
+        }
+        catch (Exception ex) { ErrorMsg = $"Error: {ex.Message}"; }
+        finally { IsGenerating = false; StateHasChanged(); }
+    }
+
+    private async Task GenPptDinamico()
+    {
+        if (Datos == null) return;
+        IsGenerating = true; ErrorMsg = null; SuccessMsg = null; StateHasChanged();
+        try
+        {
+            PptDinamicoBytes = await Task.Run(() => PptService.GeneratePptDinamico(Datos));
+            PptDinamicoName = $"SAC_Nacional_{DateTime.Now:dd_MM_yyyy}.pptx";
+            SuccessMsg = "✅ Presentación PPT generada";
+        }
+        catch (Exception ex) { ErrorMsg = $"Error: {ex.Message}"; }
+        finally { IsGenerating = false; StateHasChanged(); }
+    }
+
+    private async Task GenPptHistorico()
+    {
+        if (Datos == null || string.IsNullOrEmpty(HistDepto)) return;
+        IsGenerating = true; ErrorMsg = null; SuccessMsg = null; StateHasChanged();
+        try
+        {
+            PptHistoricoBytes = await Task.Run(() => PptService.GeneratePptHistorico(Datos, HistDepto));
+            PptHistoricoName = $"Historico_SAC_{ToTitle(HistDepto)}_{DateTime.Now:dd_MM_yyyy}.pptx";
+            SuccessMsg = $"✅ PPT Histórica de {ToTitle(HistDepto)} generada";
         }
         catch (Exception ex) { ErrorMsg = $"Error: {ex.Message}"; }
         finally { IsGenerating = false; StateHasChanged(); }
