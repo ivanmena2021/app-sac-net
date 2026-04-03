@@ -144,11 +144,11 @@ def _top_breakdown(df, col, n=10):
     for _, r in result.iterrows():
         row = {"name": str(r[col]), "avisos": int(r["Avisos"])}
         if "Indemnización" in r:
-            row["indem"] = float(r["Indemnización"])
+            row["indem"] = _safe_num(r["Indemnización"])
         if "Desembolso" in r:
-            row["desemb"] = float(r["Desembolso"])
+            row["desemb"] = _safe_num(r["Desembolso"])
         if "Ha" in r:
-            row["ha"] = round(float(r["Ha"]), 2)
+            row["ha"] = round(_safe_num(r["Ha"]), 2)
         if has_prod and r[col] in prod_by_geo.index:
             row["prod"] = int(prod_by_geo[r[col]])
         rows.append(row)
@@ -168,7 +168,7 @@ def _tipo_breakdown(df):
     for _, r in result.iterrows():
         row = {"tipo": str(r["TIPO_SINIESTRO"]), "avisos": int(r["Avisos"])}
         if "Indemnización" in r:
-            row["indem"] = float(r["Indemnización"])
+            row["indem"] = _safe_num(r["Indemnización"])
         rows.append(row)
     return rows
 
@@ -625,14 +625,14 @@ def _fix_geo_upper(name):
 
 def _fmt_num(n):
     """Format number with locale."""
-    if n is None:
+    if n is None or (isinstance(n, float) and (np.isnan(n) or np.isinf(n))):
         return "0"
     return f"{int(n):,}"
 
 
 def _fmt_money(n):
     """Format money (S/ X,XXX or S/ X.XX M)."""
-    if n is None or n == 0:
+    if n is None or n == 0 or (isinstance(n, float) and (np.isnan(n) or np.isinf(n))):
         return "S/ 0"
     if abs(n) >= 1_000_000:
         return f"S/{n/1_000_000:,.2f}M"
@@ -1342,6 +1342,8 @@ def _add_tipo_siniestro_slide(prs, tipos):
 
 def _add_top_deptos_chart(prs, top_deptos):
     """Add top departamentos bar chart slide."""
+    if not top_deptos:
+        return
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     background = slide.shapes.add_shape(
         MSO_SHAPE.RECTANGLE,
@@ -1645,7 +1647,7 @@ def _add_nacional_section(prs, section):
     empresas = section.get("empresas", [])
     pipeline = section.get("pipeline", [])
     tipos = section.get("tipos", [])
-    deptos = section.get("departamentos", [])
+    deptos = section.get("top_deptos", section.get("departamentos", []))
 
     # Slide 1: Indicadores Clave
     slide = prs.slides.add_slide(prs.slide_layouts[6])
