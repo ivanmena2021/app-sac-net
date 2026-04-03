@@ -91,6 +91,13 @@ async def test_process(
 async def process_and_generate(
     report_type: str = Query(..., description="Type: word-nacional, word-departamental, word-operatividad, excel-eme, excel-enhanced, pdf-ejecutivo, ppt-dinamico, ppt-historico"),
     departamento: str = Query(None, description="Department name (for departamental/historico reports)"),
+    empresa: str = Query(None, description="Filter: ambas, LA POSITIVA, RIMAC"),
+    departamentos: str = Query(None, description="Filter: comma-separated dept list"),
+    provincias: str = Query(None, description="Filter: comma-separated provinces"),
+    distritos: str = Query(None, description="Filter: comma-separated districts"),
+    tipos_siniestro: str = Query(None, description="Filter: comma-separated siniestro types"),
+    fecha_inicio: str = Query(None, description="Filter: start date YYYY-MM-DD"),
+    fecha_fin: str = Query(None, description="Filter: end date YYYY-MM-DD"),
     midagri: UploadFile = File(..., description="MIDAGRI Excel file (.xlsx)"),
     siniestros: UploadFile = File(..., description="Siniestros Excel file (.xlsx)"),
 ):
@@ -161,22 +168,34 @@ async def process_and_generate(
 
         elif report_type == "ppt-dinamico":
             from gen_ppt_dinamico import generar_ppt_dinamico
-            # Build filtros dict (no filters = national scope)
+            # Build filtros dict from query params
+            _deptos = [d.strip() for d in departamentos.split(",")] if departamentos else []
+            _provs = [p.strip() for p in provincias.split(",")] if provincias else []
+            _dists = [d.strip() for d in distritos.split(",")] if distritos else []
+            _tipos = [t.strip() for t in tipos_siniestro.split(",")] if tipos_siniestro else []
             filtros = {
-                "empresa": "ambas",
-                "tipos_siniestro": [],
-                "fecha_inicio": None,
-                "fecha_fin": None,
-                "departamentos": [departamento] if departamento else [],
-                "provincias": [],
-                "distritos": [],
+                "empresa": empresa or "ambas",
+                "tipos_siniestro": _tipos,
+                "fecha_inicio": fecha_inicio,
+                "fecha_fin": fecha_fin,
+                "departamentos": _deptos,
+                "provincias": _provs,
+                "distritos": _dists,
             }
             doc_bytes = generar_ppt_dinamico(
                 datos["midagri"],
                 filtros,
                 datos["fecha_corte"]
             )
-            scope = departamento.strip().title() if departamento else "Nacional"
+            # Build scope for filename
+            if _dists:
+                scope = _dists[0].strip().title()
+            elif _provs:
+                scope = _provs[0].strip().title()
+            elif _deptos:
+                scope = "_".join(d.strip().title() for d in _deptos[:3])
+            else:
+                scope = "Nacional"
             filename = f"SAC_{scope}_{fecha_str}.pptx"
             content_type = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 

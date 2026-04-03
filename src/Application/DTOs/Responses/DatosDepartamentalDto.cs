@@ -5,7 +5,9 @@ public class DatosDepartamentalDto
     public string Departamento { get; set; } = string.Empty;
     public string Empresa { get; set; } = string.Empty;
     public double PrimaNeta { get; set; }
+    public double PrimaTotal { get; set; }
     public double SupAsegurada { get; set; }
+    public double HaAseguradas { get; set; }
     public int TotalAvisos { get; set; }
     public double HaIndemnizadas { get; set; }
     public double MontoIndemnizado { get; set; }

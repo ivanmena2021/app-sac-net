@@ -70,15 +70,32 @@ public class PythonApiReportService : IWordReportService, IExcelReportService,
     // ─── IPptReportService ───
     public byte[] GeneratePptDinamico(DatosNacionalesDto datos, PptFilterDto? filtros = null)
     {
-        string? depto = filtros?.Departamentos.FirstOrDefault();
-        return CallPythonApi("ppt-dinamico", depto).GetAwaiter().GetResult();
+        var extraParams = new Dictionary<string, string>();
+        if (filtros != null)
+        {
+            if (!string.IsNullOrEmpty(filtros.Empresa))
+                extraParams["empresa"] = filtros.Empresa;
+            if (filtros.Departamentos.Any())
+                extraParams["departamentos"] = string.Join(",", filtros.Departamentos);
+            if (filtros.Provincias.Any())
+                extraParams["provincias"] = string.Join(",", filtros.Provincias);
+            if (filtros.Distritos.Any())
+                extraParams["distritos"] = string.Join(",", filtros.Distritos);
+            if (filtros.TiposSiniestro.Any())
+                extraParams["tipos_siniestro"] = string.Join(",", filtros.TiposSiniestro);
+            if (filtros.FechaInicio.HasValue)
+                extraParams["fecha_inicio"] = filtros.FechaInicio.Value.ToString("yyyy-MM-dd");
+            if (filtros.FechaFin.HasValue)
+                extraParams["fecha_fin"] = filtros.FechaFin.Value.ToString("yyyy-MM-dd");
+        }
+        return CallPythonApi("ppt-dinamico", null, extraParams).GetAwaiter().GetResult();
     }
 
     public byte[] GeneratePptHistorico(DatosNacionalesDto datos, string departamento)
         => CallPythonApi("ppt-historico", departamento).GetAwaiter().GetResult();
 
     // ─── Core HTTP call ───
-    private async Task<byte[]> CallPythonApi(string reportType, string? departamento = null)
+    private async Task<byte[]> CallPythonApi(string reportType, string? departamento = null, Dictionary<string, string>? extraParams = null)
     {
         if (_lastMidagriBytes == null || _lastSiniestrosBytes == null)
             throw new InvalidOperationException("No hay archivos Excel cargados. Suba los archivos primero.");
@@ -98,6 +115,11 @@ public class PythonApiReportService : IWordReportService, IExcelReportService,
         var url = $"{_baseUrl}/api/process-and-generate?report_type={reportType}";
         if (!string.IsNullOrEmpty(departamento))
             url += $"&departamento={Uri.EscapeDataString(departamento)}";
+        if (extraParams != null)
+        {
+            foreach (var kv in extraParams)
+                url += $"&{kv.Key}={Uri.EscapeDataString(kv.Value)}";
+        }
 
         var response = await _httpClient.PostAsync(url, content);
 

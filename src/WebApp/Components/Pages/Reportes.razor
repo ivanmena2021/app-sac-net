@@ -9,6 +9,7 @@
 @inject IPptReportService PptService
 @inject IJSRuntime JS
 @using WebApp.Components.Custom
+@using Application.DTOs.Requests
 
 <PageTitle>Generar Reportes — SAC</PageTitle>
 
@@ -16,7 +17,7 @@
 
 @if (Datos == null)
 {
-    <div class="alert alert-warning">⚠️ Primero cargue los datos en la página de <a href="/">Inicio</a>.</div>
+    <div class="alert alert-warning">Primero cargue los datos en la página de <a href="/">Inicio</a>.</div>
 }
 else
 {
@@ -39,20 +40,33 @@ else
                     <p>Ayuda Memoria: Resumen de Operatividad SAC 2025-2026 — Fecha de corte: <strong>@Datos.FechaCorte</strong></p>
                 </div>
                 <div class="row mt-3">
-                    <div class="col-md-6">
+                    <div class="col-md-4">
                         <button class="btn btn-primary w-100" @onclick="GenNacional" disabled="@IsGenerating">
-                            @(IsGenerating ? "Generando..." : "⚡ Generar Ayuda Memoria Nacional")
+                            @(IsGenerating ? "Generando..." : "Generar Ayuda Memoria Nacional")
                         </button>
                     </div>
-                    <div class="col-md-6">
+                    <div class="col-md-4">
                         @if (DocNacional != null)
                         {
                             <button class="btn btn-success w-100" @onclick="() => Download(DocNacional, DocNacionalName, DocxMime)">
-                                ⬇️ Descargar Nacional
+                                Descargar Nacional
                             </button>
                         }
                     </div>
+                    <div class="col-md-4">
+                        <button class="btn btn-outline-primary w-100" @onclick="GenPdf" disabled="@IsGenerating">
+                            @(IsGenerating ? "Generando..." : "Generar PDF Ejecutivo")
+                        </button>
+                    </div>
                 </div>
+                @if (PdfBytes != null)
+                {
+                    <div class="row mt-2">
+                        <div class="col-md-4 offset-md-8">
+                            <button class="btn btn-success w-100" @onclick="() => Download(PdfBytes, PdfName, PdfMime)">Descargar PDF</button>
+                        </div>
+                    </div>
+                }
                 @RenderCuadros()
                 break;
 
@@ -75,21 +89,30 @@ else
                 {
                     <div class="row mt-3">
                         <div class="col-md-3"><MetricCard Label="Avisos" Value="@DeptoData.TotalAvisos.ToString()" Accent="blue" /></div>
-                        <div class="col-md-3"><MetricCard Label="Indemnización" Value="@($"S/ {DeptoData.MontoIndemnizado:N0}")" Accent="amber" /></div>
+                        <div class="col-md-3"><MetricCard Label="Indemnizacion" Value="@($"S/ {DeptoData.MontoIndemnizado:N0}")" Accent="amber" /></div>
                         <div class="col-md-3"><MetricCard Label="Ha Indemnizadas" Value="@($"{DeptoData.HaIndemnizadas:N2}")" Accent="purple" /></div>
                         <div class="col-md-3"><MetricCard Label="Desembolso" Value="@($"S/ {DeptoData.MontoDesembolsado:N0}")" Accent="green" /></div>
                     </div>
-                    <div class="row mt-3">
+                    <div class="row mt-2">
+                        <div class="col-12">
+                            <p class="text-muted" style="font-size:0.9rem;">
+                                <strong>Aseguradora:</strong> @(DeptoData.Empresa ?? "N/D") |
+                                <strong>Prima Total:</strong> S/ @DeptoData.PrimaTotal.ToString("N2") |
+                                <strong>Ha Aseguradas:</strong> @DeptoData.HaAseguradas.ToString("N2")
+                            </p>
+                        </div>
+                    </div>
+                    <div class="row mt-2">
                         <div class="col-md-6">
                             <button class="btn btn-primary w-100" @onclick="GenDepartamental" disabled="@IsGenerating">
-                                @(IsGenerating ? "Generando..." : "⚡ Generar Departamental")
+                                @(IsGenerating ? "Generando..." : "Generar Departamental")
                             </button>
                         </div>
                         <div class="col-md-6">
                             @if (DocDepto != null)
                             {
                                 <button class="btn btn-success w-100" @onclick="() => Download(DocDepto, DocDeptoName, DocxMime)">
-                                    ⬇️ Descargar Departamental
+                                    Descargar Departamental
                                 </button>
                             }
                         </div>
@@ -99,51 +122,38 @@ else
 
             case "operatividad":
                 <div class="tab-intro">
-                    <p>Reporte de Operatividad del SAC con análisis por empresa aseguradora y tablas de siniestralidad.</p>
+                    <p>Reporte de Operatividad del SAC con analisis por empresa aseguradora y tablas de siniestralidad.</p>
                 </div>
                 <div class="row mt-3">
-                    <div class="col-md-4">
+                    <div class="col-md-6">
                         <button class="btn btn-primary w-100" @onclick="GenOperatividad" disabled="@IsGenerating">
-                            @(IsGenerating ? "Generando..." : "⚡ Generar Operatividad")
+                            @(IsGenerating ? "Generando..." : "Generar Operatividad")
                         </button>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-6">
                         @if (DocOperatividad != null)
                         {
-                            <button class="btn btn-success w-100" @onclick="() => Download(DocOperatividad, DocOperatividadName, DocxMime)">⬇️ Descargar Operatividad</button>
+                            <button class="btn btn-success w-100" @onclick="() => Download(DocOperatividad, DocOperatividadName, DocxMime)">Descargar Operatividad</button>
                         }
                     </div>
-                    <div class="col-md-4">
-                        <button class="btn btn-outline-primary w-100" @onclick="GenPdf" disabled="@IsGenerating">
-                            @(IsGenerating ? "Generando..." : "📊 Generar PDF Ejecutivo")
-                        </button>
-                    </div>
                 </div>
-                @if (PdfBytes != null)
-                {
-                    <div class="row mt-2">
-                        <div class="col-md-4 offset-md-8">
-                            <button class="btn btn-success w-100" @onclick="() => Download(PdfBytes, PdfName, PdfMime)">⬇️ Descargar PDF</button>
-                        </div>
-                    </div>
-                }
                 break;
 
             case "eme":
                 <div class="tab-intro">
-                    <p>Formato Reporte EME — Reporte consolidado por región con acciones implementadas.</p>
+                    <p>Formato Reporte EME — Reporte consolidado por region con acciones implementadas.</p>
                 </div>
                 <div class="row mt-3">
                     <div class="col-md-6">
                         <button class="btn btn-primary w-100" @onclick="GenEME" disabled="@IsGenerating">
-                            @(IsGenerating ? "Generando..." : "⚡ Generar Reporte EME")
+                            @(IsGenerating ? "Generando..." : "Generar Reporte EME")
                         </button>
                     </div>
                     <div class="col-md-6">
                         @if (XlsEme != null)
                         {
                             <button class="btn btn-success w-100" @onclick="() => Download(XlsEme, XlsEmeName, XlsxMime)">
-                                ⬇️ Descargar EME
+                                Descargar EME
                             </button>
                         }
                     </div>
@@ -152,18 +162,117 @@ else
 
             case "ppt":
                 <div class="tab-intro">
-                    <p>Presentación PowerPoint dinámica con filtros geográficos y por empresa.</p>
+                    <p>Presentacion PowerPoint dinamica con filtros geograficos, por empresa y tipo de siniestro.</p>
                 </div>
+
+                @* ═══ PANEL DE FILTROS PPT ═══ *@
+                <div class="card mt-3">
+                    <div class="card-header" style="background:#1F4E79;color:white;font-weight:bold;">Filtros de la presentacion</div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            @* Checkbox incluir nacional *@
+                            <div class="col-md-12">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" @bind="PptIncluirNacional" id="chkNacional" />
+                                    <label class="form-check-label" for="chkNacional">Incluir Resumen Nacional</label>
+                                </div>
+                            </div>
+
+                            @* Aseguradora *@
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">Aseguradora</label>
+                                <select class="form-select" @bind="PptEmpresa">
+                                    <option value="ambas">Ambas</option>
+                                    <option value="LA POSITIVA">LA POSITIVA</option>
+                                    <option value="RIMAC">RIMAC</option>
+                                </select>
+                            </div>
+
+                            @* Tipo(s) de siniestro *@
+                            <div class="col-md-8">
+                                <label class="form-label fw-bold">Tipo(s) de siniestro</label>
+                                <select class="form-select" multiple size="4" @onchange="OnTiposSiniestroChanged">
+                                    @foreach (var tipo in TiposSiniestroList)
+                                    {
+                                        <option value="@tipo" selected="@PptTiposSiniestro.Contains(tipo)">@tipo</option>
+                                    }
+                                </select>
+                                <small class="text-muted">Ctrl+click para seleccionar multiples. Vacio = todos.</small>
+                            </div>
+
+                            @* Departamento(s) *@
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">Departamento(s)</label>
+                                <select class="form-select" multiple size="5" @onchange="OnPptDeptosChanged">
+                                    @foreach (var d in Datos.DepartamentosList)
+                                    {
+                                        <option value="@d" selected="@PptDeptos.Contains(d)">@ToTitle(d)</option>
+                                    }
+                                </select>
+                                <small class="text-muted">Vacio = todos (nacional).</small>
+                            </div>
+
+                            @* Provincia(s) — cascada *@
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">Provincia(s)</label>
+                                <select class="form-select" multiple size="5" @onchange="OnPptProvsChanged" disabled="@(!PptDeptos.Any())">
+                                    @foreach (var p in ProvinciasFiltradas)
+                                    {
+                                        <option value="@p" selected="@PptProvs.Contains(p)">@ToTitle(p)</option>
+                                    }
+                                </select>
+                                <small class="text-muted">Seleccione departamento(s) primero.</small>
+                            </div>
+
+                            @* Distrito(s) — cascada, max 5 *@
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">Distrito(s) (max 5)</label>
+                                <select class="form-select" multiple size="5" @onchange="OnPptDistsChanged" disabled="@(!PptProvs.Any())">
+                                    @foreach (var d in DistritosFiltrados)
+                                    {
+                                        <option value="@d" selected="@PptDists.Contains(d)">@ToTitle(d)</option>
+                                    }
+                                </select>
+                                <small class="text-muted">Seleccione provincia(s) primero. Max 5.</small>
+                            </div>
+
+                            @* Filtrar por periodo *@
+                            <div class="col-md-12">
+                                <div class="form-check mt-2">
+                                    <input class="form-check-input" type="checkbox" @bind="PptFiltrarFecha" id="chkFecha" />
+                                    <label class="form-check-label" for="chkFecha">Filtrar por periodo</label>
+                                </div>
+                            </div>
+                            @if (PptFiltrarFecha)
+                            {
+                                <div class="col-md-4">
+                                    <label class="form-label">Desde</label>
+                                    <input type="date" class="form-control" @bind="PptFechaInicio" />
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Hasta</label>
+                                    <input type="date" class="form-control" @bind="PptFechaFin" />
+                                </div>
+                            }
+                        </div>
+
+                        @* Scope info *@
+                        <div class="mt-3 p-2" style="background:#f0f4f8;border-radius:6px;">
+                            <strong>Alcance:</strong> @ComputePptScope()
+                        </div>
+                    </div>
+                </div>
+
                 <div class="row mt-3">
                     <div class="col-md-6">
                         <button class="btn btn-primary w-100" @onclick="GenPptDinamico" disabled="@IsGenerating">
-                            @(IsGenerating ? "Generando..." : "⚡ Generar PPT Dinámica")
+                            @(IsGenerating ? "Generando..." : "Generar PPT Dinamica")
                         </button>
                     </div>
                     <div class="col-md-6">
                         @if (PptDinamicoBytes != null)
                         {
-                            <button class="btn btn-success w-100" @onclick="() => Download(PptDinamicoBytes, PptDinamicoName, PptxMime)">⬇️ Descargar PPT</button>
+                            <button class="btn btn-success w-100" @onclick="() => Download(PptDinamicoBytes, PptDinamicoName, PptxMime)">Descargar PPT</button>
                         }
                     </div>
                 </div>
@@ -175,14 +284,29 @@ else
                 </div>
                 <div class="row mt-3">
                     <div class="col-md-6">
-                        <button class="btn btn-primary w-100" disabled>⚡ Generar Batch (próximamente)</button>
+                        <button class="btn btn-primary w-100" @onclick="GenBatch" disabled="@IsGenerating">
+                            @(IsGenerating ? "Generando batch..." : "Generar Todos (ZIP)")
+                        </button>
+                    </div>
+                    <div class="col-md-6">
+                        @if (BatchZipBytes != null)
+                        {
+                            <button class="btn btn-success w-100" @onclick="() => Download(BatchZipBytes, BatchZipName, ZipMime)">Descargar ZIP</button>
+                        }
                     </div>
                 </div>
+                @if (BatchProgress != null)
+                {
+                    <div class="progress mt-3" style="height:25px;">
+                        <div class="progress-bar bg-success" style="width:@BatchPct%">@BatchProgress</div>
+                    </div>
+                }
                 break;
 
             case "historico":
                 <div class="tab-intro">
-                    <p>Análisis histórico de siniestralidad por departamento.</p>
+                    <p>Analisis historico de siniestralidad por departamento (5 campanas anteriores + actual).
+                    <br/>Siniestralidad = Indemnizacion / Prima Neta x 100%.</p>
                 </div>
                 <div class="row mt-3">
                     <div class="col-md-4">
@@ -196,13 +320,13 @@ else
                     </div>
                     <div class="col-md-4">
                         <button class="btn btn-primary w-100" @onclick="GenPptHistorico" disabled="@(IsGenerating || string.IsNullOrEmpty(HistDepto))">
-                            @(IsGenerating ? "Generando..." : "⚡ Generar PPT Histórica")
+                            @(IsGenerating ? "Generando..." : "Generar PPT Historica")
                         </button>
                     </div>
                     <div class="col-md-4">
                         @if (PptHistoricoBytes != null)
                         {
-                            <button class="btn btn-success w-100" @onclick="() => Download(PptHistoricoBytes, PptHistoricoName, PptxMime)">⬇️ Descargar PPT Histórica</button>
+                            <button class="btn btn-success w-100" @onclick="() => Download(PptHistoricoBytes, PptHistoricoName, PptxMime)">Descargar PPT Historica</button>
                         }
                     </div>
                 </div>
@@ -242,30 +366,106 @@ else
     private string DocOperatividadName = "";
     private byte[]? PdfBytes;
     private string PdfName = "";
-
     private byte[]? PptDinamicoBytes;
     private string PptDinamicoName = "";
     private byte[]? PptHistoricoBytes;
     private string PptHistoricoName = "";
     private string HistDepto = "";
 
+    // Batch
+    private byte[]? BatchZipBytes;
+    private string BatchZipName = "";
+    private string? BatchProgress;
+    private int BatchPct;
+
+    // PPT Dinámica filters
+    private bool PptIncluirNacional = true;
+    private string PptEmpresa = "ambas";
+    private List<string> PptDeptos = new();
+    private List<string> PptProvs = new();
+    private List<string> PptDists = new();
+    private List<string> PptTiposSiniestro = new();
+    private bool PptFiltrarFecha;
+    private DateTime? PptFechaInicio;
+    private DateTime? PptFechaFin;
+
+    // Cascading filter data
+    private List<string> TiposSiniestroList =>
+        Datos?.Midagri
+            .Where(s => !string.IsNullOrEmpty(s.TipoSiniestro))
+            .Select(s => s.TipoSiniestro.Trim().ToUpper())
+            .Distinct().OrderBy(x => x).ToList() ?? new();
+
+    private List<string> ProvinciasFiltradas =>
+        Datos?.Midagri
+            .Where(s => PptDeptos.Contains(s.Departamento) && !string.IsNullOrEmpty(s.Provincia))
+            .Select(s => s.Provincia.Trim().ToUpper())
+            .Distinct().OrderBy(x => x).ToList() ?? new();
+
+    private List<string> DistritosFiltrados =>
+        Datos?.Midagri
+            .Where(s => PptProvs.Contains(s.Provincia) && !string.IsNullOrEmpty(s.Distrito))
+            .Select(s => s.Distrito.Trim().ToUpper())
+            .Distinct().OrderBy(x => x).ToList() ?? new();
+
     private const string DocxMime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     private const string XlsxMime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
     private const string PdfMime = "application/pdf";
     private const string PptxMime = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    private const string ZipMime = "application/zip";
 
     private Dictionary<string, string> Tabs = new()
     {
-        ["nacional"] = "📄 Nacional",
-        ["departamental"] = "📄 Departamental",
-        ["operatividad"] = "📊 Operatividad",
-        ["eme"] = "📋 EME",
-        ["ppt"] = "📽️ PPT Dinámica",
-        ["batch"] = "📦 Todos",
-        ["historico"] = "📈 Histórico",
+        ["nacional"] = "Nacional",
+        ["departamental"] = "Departamental",
+        ["operatividad"] = "Operatividad",
+        ["eme"] = "EME",
+        ["ppt"] = "PPT Dinamica",
+        ["batch"] = "Todos",
+        ["historico"] = "Historico",
     };
 
     private string ToTitle(string s) => System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(s.ToLower());
+
+    private string ComputePptScope()
+    {
+        if (PptDists.Any()) return $"Distrital: {string.Join(", ", PptDists.Select(ToTitle))}";
+        if (PptProvs.Any()) return $"Provincial: {string.Join(", ", PptProvs.Select(ToTitle))}";
+        if (PptDeptos.Any()) return $"Departamental: {string.Join(", ", PptDeptos.Select(ToTitle))}";
+        return "Nacional (todos los departamentos)";
+    }
+
+    // ═══ Filter event handlers ═══
+    private void OnPptDeptosChanged(ChangeEventArgs e)
+    {
+        PptDeptos = ParseMultiSelect(e);
+        PptProvs.Clear();
+        PptDists.Clear();
+    }
+
+    private void OnPptProvsChanged(ChangeEventArgs e)
+    {
+        PptProvs = ParseMultiSelect(e);
+        PptDists.Clear();
+    }
+
+    private void OnPptDistsChanged(ChangeEventArgs e)
+    {
+        var selected = ParseMultiSelect(e);
+        PptDists = selected.Take(5).ToList();
+    }
+
+    private void OnTiposSiniestroChanged(ChangeEventArgs e)
+    {
+        PptTiposSiniestro = ParseMultiSelect(e);
+    }
+
+    private List<string> ParseMultiSelect(ChangeEventArgs e)
+    {
+        if (e.Value is string[] arr) return arr.ToList();
+        if (e.Value is string s) return new List<string> { s };
+        return new();
+    }
 
     private void OnDeptoChanged(ChangeEventArgs e)
     {
@@ -277,6 +477,7 @@ else
             DeptoData = null;
     }
 
+    // ═══ Generation methods ═══
     private async Task GenNacional()
     {
         if (Datos == null) return;
@@ -285,7 +486,7 @@ else
         {
             DocNacional = await Task.Run(() => WordService.GenerateNacionalDocx(Datos));
             DocNacionalName = $"Ayuda_Memoria_Resumen_SAC_2025-2026_{DateTime.Now:dd_MM_yyyy}.docx";
-            SuccessMsg = "✅ Documento nacional generado exitosamente";
+            SuccessMsg = "Documento nacional generado exitosamente";
         }
         catch (Exception ex) { ErrorMsg = $"Error: {ex.Message}"; }
         finally { IsGenerating = false; StateHasChanged(); }
@@ -299,7 +500,7 @@ else
         {
             DocDepto = await Task.Run(() => WordService.GenerateDepartamentalDocx(DeptoData));
             DocDeptoName = $"Ayuda_Memoria_SAC_{DeptoData.Departamento}_{DateTime.Now:dd_MM_yyyy}.docx";
-            SuccessMsg = $"✅ Documento de {DeptoData.Departamento} generado";
+            SuccessMsg = $"Documento de {DeptoData.Departamento} generado";
         }
         catch (Exception ex) { ErrorMsg = $"Error: {ex.Message}"; }
         finally { IsGenerating = false; StateHasChanged(); }
@@ -313,7 +514,7 @@ else
         {
             XlsEme = await Task.Run(() => ExcelService.GenerateReporteEme(Datos));
             XlsEmeName = $"formato_reporte_EME_{DateTime.Now:dd_MM_yyyy}.xlsx";
-            SuccessMsg = "✅ Reporte EME generado exitosamente";
+            SuccessMsg = "Reporte EME generado exitosamente";
         }
         catch (Exception ex) { ErrorMsg = $"Error: {ex.Message}"; }
         finally { IsGenerating = false; StateHasChanged(); }
@@ -327,7 +528,7 @@ else
         {
             DocOperatividad = await Task.Run(() => OperatividadService.GenerateOperatividadDocx(Datos));
             DocOperatividadName = $"AM_Operatividad_SAC_{DateTime.Now:dd_MM_yyyy}.docx";
-            SuccessMsg = "✅ Reporte de Operatividad generado";
+            SuccessMsg = "Reporte de Operatividad generado";
         }
         catch (Exception ex) { ErrorMsg = $"Error: {ex.Message}"; }
         finally { IsGenerating = false; StateHasChanged(); }
@@ -341,7 +542,7 @@ else
         {
             PdfBytes = await Task.Run(() => PdfService.GenerateExecutivePdf(Datos));
             PdfName = $"Resumen_Ejecutivo_SAC_{DateTime.Now:dd_MM_yyyy}.pdf";
-            SuccessMsg = "✅ PDF Ejecutivo generado";
+            SuccessMsg = "PDF Ejecutivo generado";
         }
         catch (Exception ex) { ErrorMsg = $"Error: {ex.Message}"; }
         finally { IsGenerating = false; StateHasChanged(); }
@@ -353,9 +554,26 @@ else
         IsGenerating = true; ErrorMsg = null; SuccessMsg = null; StateHasChanged();
         try
         {
-            PptDinamicoBytes = await Task.Run(() => PptService.GeneratePptDinamico(Datos));
-            PptDinamicoName = $"SAC_Nacional_{DateTime.Now:dd_MM_yyyy}.pptx";
-            SuccessMsg = "✅ Presentación PPT generada";
+            var filtros = new PptFilterDto
+            {
+                IncluirNacional = PptIncluirNacional,
+                Empresa = PptEmpresa,
+                Departamentos = PptDeptos,
+                Provincias = PptProvs,
+                Distritos = PptDists,
+                TiposSiniestro = PptTiposSiniestro,
+                FiltrarFecha = PptFiltrarFecha,
+                FechaInicio = PptFiltrarFecha ? PptFechaInicio : null,
+                FechaFin = PptFiltrarFecha ? PptFechaFin : null,
+            };
+            PptDinamicoBytes = await Task.Run(() => PptService.GeneratePptDinamico(Datos, filtros));
+            var scope = ComputePptScope().Split(":")[0].Trim();
+            var geoStr = PptDists.Any() ? string.Join("_", PptDists.Take(2).Select(ToTitle))
+                       : PptProvs.Any() ? string.Join("_", PptProvs.Take(2).Select(ToTitle))
+                       : PptDeptos.Any() ? string.Join("_", PptDeptos.Take(2).Select(ToTitle))
+                       : "Nacional";
+            PptDinamicoName = $"SAC_{geoStr}_{DateTime.Now:dd_MM_yyyy}.pptx";
+            SuccessMsg = $"PPT Dinamica generada - Alcance: {ComputePptScope()}";
         }
         catch (Exception ex) { ErrorMsg = $"Error: {ex.Message}"; }
         finally { IsGenerating = false; StateHasChanged(); }
@@ -369,9 +587,71 @@ else
         {
             PptHistoricoBytes = await Task.Run(() => PptService.GeneratePptHistorico(Datos, HistDepto));
             PptHistoricoName = $"Historico_SAC_{ToTitle(HistDepto)}_{DateTime.Now:dd_MM_yyyy}.pptx";
-            SuccessMsg = $"✅ PPT Histórica de {ToTitle(HistDepto)} generada";
+            SuccessMsg = $"PPT Historica de {ToTitle(HistDepto)} generada";
         }
         catch (Exception ex) { ErrorMsg = $"Error: {ex.Message}"; }
+        finally { IsGenerating = false; StateHasChanged(); }
+    }
+
+    private async Task GenBatch()
+    {
+        if (Datos == null) return;
+        IsGenerating = true; ErrorMsg = null; SuccessMsg = null; BatchProgress = "Iniciando..."; BatchPct = 0;
+        StateHasChanged();
+        try
+        {
+            using var ms = new System.IO.MemoryStream();
+            using (var zip = new System.IO.Compression.ZipArchive(ms, System.IO.Compression.ZipArchiveMode.Create, true))
+            {
+                // Nacional
+                BatchProgress = "Generando Nacional..."; BatchPct = 5; StateHasChanged();
+                var nacBytes = await Task.Run(() => WordService.GenerateNacionalDocx(Datos));
+                var nacEntry = zip.CreateEntry($"Ayuda_Memoria_Nacional_{DateTime.Now:dd_MM_yyyy}.docx");
+                using (var s = nacEntry.Open()) { await s.WriteAsync(nacBytes); }
+
+                // PDF
+                BatchProgress = "Generando PDF..."; BatchPct = 15; StateHasChanged();
+                var pdfB = await Task.Run(() => PdfService.GenerateExecutivePdf(Datos));
+                var pdfEntry = zip.CreateEntry($"Resumen_Ejecutivo_{DateTime.Now:dd_MM_yyyy}.pdf");
+                using (var s = pdfEntry.Open()) { await s.WriteAsync(pdfB); }
+
+                // Operatividad
+                BatchProgress = "Generando Operatividad..."; BatchPct = 25; StateHasChanged();
+                var opBytes = await Task.Run(() => OperatividadService.GenerateOperatividadDocx(Datos));
+                var opEntry = zip.CreateEntry($"AM_Operatividad_{DateTime.Now:dd_MM_yyyy}.docx");
+                using (var s = opEntry.Open()) { await s.WriteAsync(opBytes); }
+
+                // EME
+                BatchProgress = "Generando EME..."; BatchPct = 35; StateHasChanged();
+                var emeBytes = await Task.Run(() => ExcelService.GenerateReporteEme(Datos));
+                var emeEntry = zip.CreateEntry($"formato_reporte_EME_{DateTime.Now:dd_MM_yyyy}.xlsx");
+                using (var s = emeEntry.Open()) { await s.WriteAsync(emeBytes); }
+
+                // Departamentales
+                var deptos = Datos.DepartamentosList;
+                for (int i = 0; i < deptos.Count; i++)
+                {
+                    var d = deptos[i];
+                    var pct = 40 + (int)(55.0 * i / deptos.Count);
+                    BatchProgress = $"Generando {ToTitle(d)} ({i + 1}/{deptos.Count})..."; BatchPct = pct;
+                    StateHasChanged();
+                    try
+                    {
+                        var dd = DataProcessor.GetDepartamentoData(Datos, d);
+                        var dBytes = await Task.Run(() => WordService.GenerateDepartamentalDocx(dd));
+                        var dEntry = zip.CreateEntry($"Departamentales/Ayuda_Memoria_{ToTitle(d)}_{DateTime.Now:dd_MM_yyyy}.docx");
+                        using (var s = dEntry.Open()) { await s.WriteAsync(dBytes); }
+                    }
+                    catch { /* skip failed departments */ }
+                }
+            }
+
+            BatchZipBytes = ms.ToArray();
+            BatchZipName = $"Reportes_SAC_Completo_{DateTime.Now:dd_MM_yyyy}.zip";
+            BatchProgress = null; BatchPct = 100;
+            SuccessMsg = $"Batch generado: {Datos.DepartamentosList.Count} departamentos + nacional + EME + PDF + Operatividad";
+        }
+        catch (Exception ex) { ErrorMsg = $"Error: {ex.Message}"; BatchProgress = null; }
         finally { IsGenerating = false; StateHasChanged(); }
     }
 
@@ -383,11 +663,12 @@ else
     private RenderFragment RenderCuadros() => __builder =>
     {
         if (Datos == null) return;
-        <h5 class="mt-4">Vista previa: Cuadro 1 — Primas y Cobertura</h5>
+
+        <h5 class="mt-4">Cuadro 1 — Primas y Cobertura</h5>
         <div class="table-responsive">
             <table class="table table-sm table-striped table-bordered">
                 <thead class="table-primary">
-                    <tr><th>Departamento</th><th>Prima Total (S/)</th><th>Hectáreas Aseguradas</th><th>Suma Asegurada (S/)</th></tr>
+                    <tr><th>Departamento</th><th>Prima Total (S/)</th><th>Hectareas Aseguradas</th><th>Suma Asegurada (S/)</th></tr>
                 </thead>
                 <tbody>
                     @foreach (var r in Datos.Cuadro1)
@@ -397,5 +678,53 @@ else
                 </tbody>
             </table>
         </div>
+
+        @if (Datos.Cuadro2.Any())
+        {
+            <h5 class="mt-3">Cuadro 2 — Indemnizaciones y Desembolsos por Departamento</h5>
+            <div class="table-responsive">
+                <table class="table table-sm table-striped table-bordered">
+                    <thead class="table-primary">
+                        <tr><th>Departamento</th><th>Ha Indemnizadas</th><th>Indemnizacion (S/)</th><th>Desembolso (S/)</th><th>Productores</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in Datos.Cuadro2)
+                        {
+                            <tr>
+                                <td>@r.Departamento</td>
+                                <td class="text-end">@r.HaIndemnizadas.ToString("N2")</td>
+                                <td class="text-end">@r.MontoIndemnizado.ToString("N2")</td>
+                                <td class="text-end">@r.MontoDesembolsado.ToString("N2")</td>
+                                <td class="text-end">@r.Productores.ToString("N0")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        @if (Datos.Cuadro3.Any())
+        {
+            <h5 class="mt-3">Cuadro 3 — Siniestros por Lluvias Intensas</h5>
+            <div class="table-responsive">
+                <table class="table table-sm table-striped table-bordered">
+                    <thead class="table-primary">
+                        <tr><th>Departamento</th><th>Avisos Lluvia</th><th>Ha Indemnizadas</th><th>Indemnizacion (S/)</th><th>Productores</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in Datos.Cuadro3)
+                        {
+                            <tr>
+                                <td>@r.Departamento</td>
+                                <td class="text-end">@r.Avisos.ToString("N0")</td>
+                                <td class="text-end">@r.HaIndemn.ToString("N2")</td>
+                                <td class="text-end">@r.MontoIndemnizado.ToString("N2")</td>
+                                <td class="text-end">@r.Productores.ToString("N0")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
     };
 }
