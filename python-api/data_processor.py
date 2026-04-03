@@ -331,7 +331,7 @@ def _normalize_midagri(uploaded_bytes):
                  "MONTO_DESEMBOLSADO", "SUP_DESEMBOLSO", "N_PRODUCTORES",
                  "PRIMA_NETA_DPTO", "SUP_SEMBRADA", "SUP_ASEGURADA"]:
         if col in df.columns:
-            df[col] = df[col].replace("-", np.nan)
+            df[col] = df[col].replace("-", np.nan).infer_objects(copy=False)
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
     # Coerción de fechas

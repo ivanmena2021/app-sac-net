@@ -89,8 +89,17 @@ def _write_dataframe(ws, df, start_row=1, money_cols=None, int_cols=None, decima
                 val = int(val)
             elif isinstance(val, (np.floating,)):
                 val = float(val) if not np.isnan(val) else None
+            elif isinstance(val, (np.datetime64, pd.Timestamp)):
+                try:
+                    val = pd.Timestamp(val).to_pydatetime()
+                    if pd.isna(val):
+                        val = None
+                except Exception:
+                    val = None
             elif pd.isna(val):
                 val = None
+            elif isinstance(val, (np.bool_,)):
+                val = bool(val)
 
             cell = ws.cell(row=r, column=c_idx, value=val)
             cell.font = BODY_FONT

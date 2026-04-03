@@ -7,10 +7,16 @@ Called by the .NET Blazor Server app via HTTP.
 import io
 import os
 import sys
+import traceback
+import logging
 from datetime import datetime
 from fastapi import FastAPI, UploadFile, File, Query, HTTPException
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Add current directory to path for local imports
 sys.path.insert(0, os.path.dirname(__file__))
@@ -36,7 +42,49 @@ app.add_middleware(
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "sac-report-generator", "timestamp": datetime.now().isoformat()}
+    import pandas as pd
+    return {
+        "status": "ok",
+        "service": "sac-report-generator",
+        "timestamp": datetime.now().isoformat(),
+        "python_version": sys.version,
+        "pandas_version": pd.__version__,
+        "static_data_exists": os.path.isdir(os.path.join(os.path.dirname(__file__), "static_data")),
+        "static_files": os.listdir(os.path.join(os.path.dirname(__file__), "static_data")) if os.path.isdir(os.path.join(os.path.dirname(__file__), "static_data")) else [],
+    }
+
+
+@app.post("/api/test-process")
+async def test_process(
+    midagri: UploadFile = File(...),
+    siniestros: UploadFile = File(...),
+):
+    """Test endpoint: processes data and returns diagnostic info without generating a document."""
+    try:
+        from data_processor import process_dynamic_data
+        midagri_bytes = await midagri.read()
+        siniestros_bytes = await siniestros.read()
+        logger.info(f"Received midagri: {len(midagri_bytes)} bytes, siniestros: {len(siniestros_bytes)} bytes")
+
+        datos = process_dynamic_data(
+            io.BytesIO(midagri_bytes),
+            io.BytesIO(siniestros_bytes)
+        )
+        return {
+            "status": "ok",
+            "midagri_bytes": len(midagri_bytes),
+            "siniestros_bytes": len(siniestros_bytes),
+            "midagri_shape": list(datos["midagri"].shape),
+            "midagri_columns": list(datos["midagri"].columns),
+            "materia_shape": list(datos["materia"].shape) if "materia" in datos else None,
+            "materia_columns": list(datos["materia"].columns) if "materia" in datos else None,
+            "total_avisos": int(datos.get("total_avisos", 0)),
+            "departamentos": datos.get("departamentos_list", []),
+        }
+    except Exception as e:
+        tb = traceback.format_exc()
+        logger.error(f"Test process error: {tb}")
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}\n\nTraceback:\n{tb}")
 
 
 @app.post("/api/process-and-generate")
@@ -54,6 +102,7 @@ async def process_and_generate(
         # Read uploaded files
         midagri_bytes = await midagri.read()
         siniestros_bytes = await siniestros.read()
+        logger.info(f"Generating {report_type} | midagri={len(midagri_bytes)}B siniestros={len(siniestros_bytes)}B depto={departamento}")
 
         # Process data (same as data_processor.process_dynamic_data)
         from data_processor import process_dynamic_data, get_departamento_data, load_primas_historicas
@@ -62,6 +111,7 @@ async def process_and_generate(
             io.BytesIO(midagri_bytes),
             io.BytesIO(siniestros_bytes)
         )
+        logger.info(f"Data processed: {datos['midagri'].shape[0]} rows, {len(datos.get('departamentos_list',[]))} deptos")
 
         # Generate document based on report_type
         doc_bytes = None
@@ -162,7 +212,9 @@ async def process_and_generate(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error generating report: {str(e)}")
+        tb = traceback.format_exc()
+        logger.error(f"Error generating {report_type}: {tb}")
+        raise HTTPException(status_code=500, detail=f"Error generating {report_type}: {str(e)}\n\nTraceback:\n{tb}")
 
 
 @app.post("/api/process-data")

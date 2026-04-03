@@ -39,10 +39,17 @@ def generate_reporte_eme(datos):
 
     # Distritos por departamento
     if "DISTRITO" in midagri.columns and "PROVINCIA" in midagri.columns:
-        dist_info = midagri.groupby("DEPARTAMENTO").apply(
-            lambda g: _build_district_text(g)
-        ).reset_index()
-        dist_info.columns = ["DEPARTAMENTO", "DISTRITOS"]
+        try:
+            dist_info = midagri.groupby("DEPARTAMENTO").apply(
+                lambda g: _build_district_text(g), include_groups=False
+            ).reset_index()
+            dist_info.columns = ["DEPARTAMENTO", "DISTRITOS"]
+        except TypeError:
+            # Older pandas without include_groups parameter
+            dist_info = midagri.groupby("DEPARTAMENTO").apply(
+                lambda g: _build_district_text(g)
+            ).reset_index()
+            dist_info.columns = ["DEPARTAMENTO", "DISTRITOS"]
         dept_data = dept_data.merge(dist_info, on="DEPARTAMENTO", how="left")
     else:
         dept_data["DISTRITOS"] = ""
