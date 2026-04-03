@@ -3,7 +3,9 @@ namespace Infrastructure;
 using Application.Contracts.Repositories;
 using Application.Contracts.Services;
 using Infrastructure.Alertas;
+using Infrastructure.AutoDownload;
 using Infrastructure.ExcelReader;
+using Infrastructure.LlmQuery;
 using Infrastructure.PythonApi;
 using Infrastructure.StaticData;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,6 +20,8 @@ public static class DependencyInjection
 
         // Business logic (keep in .NET)
         services.AddScoped<ISemaforoService, SemaforoService>();
+        services.AddScoped<IQueryLlmService, QueryLlmService>();
+        services.AddScoped<IAutoDownloadService, AutoDownloadService>();
 
         // Document generation (delegate to Python API)
         services.AddHttpClient<PythonApiReportService>();

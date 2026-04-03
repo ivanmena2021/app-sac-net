@@ -1,61 +1,319 @@
 @page "/mapa-calor"
 @rendermode InteractiveServer
+@inject IJSRuntime JS
 @using WebApp.Components.Custom
 
 <PageTitle>Mapa de Calor — SAC</PageTitle>
 
-<PageHeader Title="🗺️ Mapa de Calor" Description="Distribución geográfica de siniestros del SAC" />
+<PageHeader Title="Mapa de Calor SAC" Description="Distribucion geografica interactiva de siniestros del SAC" />
 
 @if (Home.SharedDatos == null)
 {
-    <div class="alert alert-warning">⚠️ Primero cargue los datos en la página de <a href="/">Inicio</a>.</div>
+    <div class="alert alert-warning">Primero cargue los datos en la pagina de <a href="/">Inicio</a>.</div>
 }
 else
 {
     var datos = Home.SharedDatos;
 
-    <div class="row mt-3">
+    <!-- Controles -->
+    <div class="row mb-3">
         <div class="col-md-3">
-            <MetricCard Label="Departamentos con avisos" Value="@datos.DepartamentosList.Count.ToString()" Accent="blue" />
-        </div>
-        <div class="col-md-3">
-            <MetricCard Label="Total Avisos" Value="@datos.Metricas.TotalAvisos.ToString("N0")" Accent="amber" />
-        </div>
-        <div class="col-md-3">
-            <MetricCard Label="Mayor Indemnización" Value="@($"S/ {datos.Cuadro2.Where(r => r.Departamento != "TOTAL").MaxBy(r => r.MontoIndemnizado)?.MontoIndemnizado ?? 0:N0}")" Accent="red" />
-        </div>
-        <div class="col-md-3">
-            <MetricCard Label="Deptos con Desembolso" Value="@datos.Metricas.DeptosConDesembolso.ToString()" Accent="green" />
-        </div>
-    </div>
-
-    <!-- Ranking table as proxy for map -->
-    <h5 class="mt-4">Ranking por Departamento — Avisos de Siniestro</h5>
-    <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
-        <table class="table table-sm table-striped table-bordered">
-            <thead class="table-primary sticky-top">
-                <tr><th>#</th><th>Departamento</th><th>Avisos</th><th>Ha Indemnizadas</th><th>Indemnización (S/)</th><th>Desembolso (S/)</th></tr>
-            </thead>
-            <tbody>
-                @{ int rank = 1; }
-                @foreach (var r in datos.Cuadro2.Where(r => r.Departamento != "TOTAL").OrderByDescending(r => r.MontoIndemnizado))
+            <label class="form-label fw-bold">Nivel geografico:</label>
+            <div class="btn-group w-100" role="group">
+                @foreach (var nivel in new[] { "Departamental", "Provincial", "Distrital" })
                 {
-                    <tr>
-                        <td>@(rank++)</td>
-                        <td>@System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(r.Departamento.ToLower())</td>
-                        <td class="text-end">@datos.Midagri.Count(s => s.Departamento == r.Departamento)</td>
-                        <td class="text-end">@r.HaIndemnizadas.ToString("N2")</td>
-                        <td class="text-end">@r.MontoIndemnizado.ToString("N2")</td>
-                        <td class="text-end">@r.MontoDesembolsado.ToString("N2")</td>
-                    </tr>
+                    <button type="button" class="btn btn-sm @(SelectedNivel == nivel ? "btn-primary" : "btn-outline-primary")"
+                            @onclick="() => OnNivelChanged(nivel)">@nivel</button>
                 }
-            </tbody>
-        </table>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label fw-bold">Metrica:</label>
+            <select class="form-select" @bind="SelectedMetrica" @bind:after="UpdateMap">
+                <option value="avisos">Avisos</option>
+                <option value="indemnizacion">Indemnizacion (S/)</option>
+                <option value="desembolso">Desembolso (S/)</option>
+                <option value="ha_indemnizadas">Ha Indemnizadas</option>
+                <option value="productores">Productores</option>
+            </select>
+        </div>
+        @if (SelectedNivel != "Departamental")
+        {
+            <div class="col-md-3">
+                <label class="form-label fw-bold">Filtrar por departamento:</label>
+                <select class="form-select" @bind="SelectedDeptoFilter" @bind:after="UpdateMap">
+                    <option value="">Todos</option>
+                    @foreach (var d in datos.DepartamentosList.OrderBy(x => x))
+                    {
+                        <option value="@d">@ToTitle(d)</option>
+                    }
+                </select>
+            </div>
+        }
+        <div class="col-md-3">
+            <label class="form-label fw-bold">Ordenar ranking:</label>
+            <select class="form-select" @bind="SortBy">
+                <option value="metric">Metrica seleccionada</option>
+                <option value="avisos">Avisos</option>
+                <option value="name">Nombre</option>
+            </select>
+        </div>
     </div>
 
-    <div class="alert alert-info mt-3">
-        🗺️ La visualización interactiva de mapas con Plotly se habilitará en una actualización futura.
+    <!-- Summary cards -->
+    <div class="row mb-3">
+        <div class="col-md-3">
+            <MetricCard Label="Mayor N. Avisos" Value="@(TopAvisos?.Nombre ?? "—")"
+                        Delta="@($"{TopAvisos?.Avisos:N0} avisos")" Accent="blue" />
+        </div>
+        <div class="col-md-3">
+            <MetricCard Label="Mayor Indemnizacion" Value="@(TopIndemn?.Nombre ?? "—")"
+                        Delta="@($"S/ {TopIndemn?.Indemnizacion:N0}")" Accent="amber" />
+        </div>
+        <div class="col-md-3">
+            <MetricCard Label="Mayor Avance Desemb." Value="@(TopDesemb?.Nombre ?? "—")"
+                        Delta="@($"{TopDesemb?.PctDesembolso:F1}%")" Accent="green" />
+        </div>
+        <div class="col-md-3">
+            <MetricCard Label="@($"{SelectedNivel}s con avisos")" Value="@CurrentData.Count(d => d.Avisos > 0).ToString()"
+                        Delta="@($"de {CurrentData.Count} total")" Accent="purple" />
+        </div>
     </div>
+
+    <!-- Mapa + Ranking -->
+    <div class="row">
+        <div class="col-md-7">
+            <div class="card">
+                <div class="card-header"><strong>Mapa — Nivel @SelectedNivel</strong></div>
+                <div class="card-body p-0">
+                    <div id="sacMap" style="height:520px;width:100%;border-radius:0 0 8px 8px;"></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-5">
+            <div class="card">
+                <div class="card-header"><strong>Ranking @SelectedNivel</strong></div>
+                <div class="card-body p-0">
+                    <div class="table-responsive" style="max-height:520px;overflow-y:auto;">
+                        <table class="table table-sm table-striped table-bordered mb-0">
+                            <thead class="table-primary sticky-top">
+                                <tr>
+                                    <th>#</th><th>@NivelLabel</th><th class="text-end">Avisos</th>
+                                    <th class="text-end">Indemn.</th><th class="text-end">Desemb.</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @{ int rank = 0; }
+                                @foreach (var d in SortedData.Take(30))
+                                {
+                                    rank++;
+                                    <tr>
+                                        <td>@rank</td>
+                                        <td>@ToTitle(d.Nombre)</td>
+                                        <td class="text-end">@d.Avisos.ToString("N0")</td>
+                                        <td class="text-end">S/ @d.Indemnizacion.ToString("N0")</td>
+                                        <td class="text-end">S/ @d.Desembolso.ToString("N0")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <p class="text-muted small mt-3">
+        Mapa interactivo Leaflet + OpenStreetMap. Nivel @SelectedNivel.
+        @if (SelectedNivel != "Departamental")
+        {
+            <text>Coordenadas provinciales/distritales son aproximaciones via jitter desde centroide departamental.</text>
+        }
+    </p>
 }
 
 <SacFooter />
+
+@code {
+    private string SelectedMetrica = "avisos";
+    private string SelectedNivel = "Departamental";
+    private string SelectedDeptoFilter = "";
+    private string SortBy = "metric";
+    private bool _mapInitialized;
+
+    private string NivelLabel => SelectedNivel switch
+    {
+        "Provincial" => "Provincia",
+        "Distrital" => "Distrito",
+        _ => "Departamento",
+    };
+
+    private List<MapUnit> CurrentData => BuildData();
+    private MapUnit? TopAvisos => CurrentData.OrderByDescending(d => d.Avisos).FirstOrDefault();
+    private MapUnit? TopIndemn => CurrentData.OrderByDescending(d => d.Indemnizacion).FirstOrDefault();
+    private MapUnit? TopDesemb => CurrentData.Where(d => d.Indemnizacion > 0).OrderByDescending(d => d.PctDesembolso).FirstOrDefault();
+
+    private IEnumerable<MapUnit> SortedData => SortBy switch
+    {
+        "avisos" => CurrentData.OrderByDescending(d => d.Avisos),
+        "name" => CurrentData.OrderBy(d => d.Nombre),
+        _ => CurrentData.OrderByDescending(d => GetVal(d)),
+    };
+
+    private static readonly Dictionary<string, (double lat, double lon)> DeptCoords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["AMAZONAS"] = (-6.23, -77.86), ["ANCASH"] = (-9.53, -77.53), ["APURIMAC"] = (-14.05, -72.88),
+        ["AREQUIPA"] = (-15.52, -72.09), ["AYACUCHO"] = (-13.64, -73.98), ["CAJAMARCA"] = (-7.16, -78.51),
+        ["CUSCO"] = (-13.53, -71.97), ["HUANCAVELICA"] = (-12.79, -75.02), ["HUANUCO"] = (-9.93, -76.24),
+        ["ICA"] = (-14.07, -75.73), ["JUNIN"] = (-11.50, -75.00), ["LA LIBERTAD"] = (-7.77, -78.71),
+        ["LAMBAYEQUE"] = (-6.70, -79.91), ["LIMA"] = (-11.76, -76.60), ["LORETO"] = (-4.65, -74.96),
+        ["MADRE DE DIOS"] = (-12.59, -70.04), ["MOQUEGUA"] = (-17.19, -70.93), ["PASCO"] = (-10.40, -75.52),
+        ["PIURA"] = (-5.18, -80.10), ["PUNO"] = (-14.84, -70.02), ["SAN MARTIN"] = (-7.18, -76.73),
+        ["TACNA"] = (-17.62, -70.26), ["TUMBES"] = (-3.57, -80.44), ["UCAYALI"] = (-9.83, -73.09),
+    };
+
+    private static readonly Dictionary<string, double> DeptSpread = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["LORETO"] = 2.5, ["UCAYALI"] = 1.8, ["MADRE DE DIOS"] = 1.5, ["CUSCO"] = 1.2, ["JUNIN"] = 1.0,
+        ["AREQUIPA"] = 1.3, ["PUNO"] = 1.2, ["ANCASH"] = 0.9, ["SAN MARTIN"] = 1.0, ["AMAZONAS"] = 1.0,
+        ["PIURA"] = 0.9, ["CAJAMARCA"] = 0.8, ["LA LIBERTAD"] = 0.9, ["HUANUCO"] = 0.8, ["PASCO"] = 0.7,
+        ["LIMA"] = 1.1, ["AYACUCHO"] = 0.9, ["HUANCAVELICA"] = 0.7, ["APURIMAC"] = 0.6, ["ICA"] = 0.8,
+        ["MOQUEGUA"] = 0.7, ["TACNA"] = 0.6, ["TUMBES"] = 0.4, ["LAMBAYEQUE"] = 0.5,
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && Home.SharedDatos != null)
+        {
+            await DoMapUpdate();
+            _mapInitialized = true;
+        }
+    }
+
+    private async Task OnNivelChanged(string nivel)
+    {
+        SelectedNivel = nivel;
+        if (nivel == "Departamental") SelectedDeptoFilter = "";
+        await UpdateMap();
+    }
+
+    private async Task UpdateMap()
+    {
+        if (!_mapInitialized || Home.SharedDatos == null) return;
+        await DoMapUpdate();
+    }
+
+    private async Task DoMapUpdate()
+    {
+        var data = BuildData();
+        var markers = data.Where(d => d.Avisos > 0).Select(d => new
+        {
+            nombre = d.Nombre, lat = d.Lat, lon = d.Lon,
+            val = GetVal(d), avisos = d.Avisos,
+            indemnizacion = d.Indemnizacion, desembolso = d.Desembolso,
+            haIndemnizadas = d.HaIndemnizadas,
+        }).ToArray();
+
+        if (_mapInitialized)
+            await JS.InvokeVoidAsync("sacMapUpdate", markers, SelectedMetrica);
+        else
+            await JS.InvokeVoidAsync("sacMapInit", "sacMap", markers, SelectedMetrica);
+    }
+
+    private double GetVal(MapUnit d) => SelectedMetrica switch
+    {
+        "indemnizacion" => d.Indemnizacion,
+        "desembolso" => d.Desembolso,
+        "ha_indemnizadas" => d.HaIndemnizadas,
+        "productores" => d.Productores,
+        _ => d.Avisos,
+    };
+
+    private List<MapUnit> BuildData()
+    {
+        if (Home.SharedDatos == null) return new();
+        var midagri = Home.SharedDatos.Midagri;
+
+        // Apply depto filter for sub-levels
+        if (!string.IsNullOrEmpty(SelectedDeptoFilter))
+            midagri = midagri.Where(s => s.Departamento.Equals(SelectedDeptoFilter, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        if (SelectedNivel == "Departamental")
+            return BuildDeptLevel(midagri);
+        if (SelectedNivel == "Provincial")
+            return BuildSubLevel(midagri, s => s.Provincia?.Trim().ToUpper() ?? "", s => s.Departamento);
+        return BuildSubLevel(midagri, s => s.Distrito?.Trim().ToUpper() ?? "", s => s.Departamento);
+    }
+
+    private List<MapUnit> BuildDeptLevel(IEnumerable<Domain.Entities.Siniestro> records)
+    {
+        return records.GroupBy(s => s.Departamento.ToUpper())
+            .Where(g => g.Key.Length > 0)
+            .Select(g =>
+            {
+                var (lat, lon) = DeptCoords.GetValueOrDefault(g.Key, (0, 0));
+                var indemn = g.Sum(s => s.Indemnizacion);
+                return new MapUnit
+                {
+                    Nombre = g.Key, Lat = lat, Lon = lon,
+                    Avisos = g.Count(), Indemnizacion = indemn,
+                    Desembolso = g.Sum(s => s.MontoDesembolsado),
+                    HaIndemnizadas = g.Sum(s => s.SupIndemnizada),
+                    Productores = g.Sum(s => s.NProductores),
+                    PctDesembolso = indemn > 0 ? (100.0 * g.Sum(s => s.MontoDesembolsado) / indemn) : 0,
+                };
+            }).ToList();
+    }
+
+    private List<MapUnit> BuildSubLevel(IEnumerable<Domain.Entities.Siniestro> records,
+        Func<Domain.Entities.Siniestro, string> groupBy, Func<Domain.Entities.Siniestro, string> getDept)
+    {
+        return records.GroupBy(s => (Name: groupBy(s), Dept: getDept(s).ToUpper()))
+            .Where(g => g.Key.Name.Length > 0)
+            .Select(g =>
+            {
+                var dept = g.Key.Dept;
+                var (baseLat, baseLon) = DeptCoords.GetValueOrDefault(dept, (0, 0));
+                var spread = DeptSpread.GetValueOrDefault(dept, 0.8);
+                var (lat, lon) = JitterCoords(g.Key.Name, baseLat, baseLon, spread);
+                var indemn = g.Sum(s => s.Indemnizacion);
+                return new MapUnit
+                {
+                    Nombre = g.Key.Name, Lat = lat, Lon = lon,
+                    Avisos = g.Count(), Indemnizacion = indemn,
+                    Desembolso = g.Sum(s => s.MontoDesembolsado),
+                    HaIndemnizadas = g.Sum(s => s.SupIndemnizada),
+                    Productores = g.Sum(s => s.NProductores),
+                    PctDesembolso = indemn > 0 ? (100.0 * g.Sum(s => s.MontoDesembolsado) / indemn) : 0,
+                };
+            }).ToList();
+    }
+
+    /// <summary>Deterministic jitter from department centroid (replicates Python _jitter_coords).</summary>
+    private static (double lat, double lon) JitterCoords(string key, double baseLat, double baseLon, double spread)
+    {
+        var hash = key.GetHashCode();
+        var r1 = ((hash & 0xFFFF) / 65535.0 - 0.5) * 2; // -1..1
+        var r2 = (((hash >> 16) & 0xFFFF) / 65535.0 - 0.5) * 2;
+        return (
+            Math.Clamp(baseLat + r1 * spread, -18.35, -0.04),
+            Math.Clamp(baseLon + r2 * spread, -81.33, -68.65)
+        );
+    }
+
+    private static string ToTitle(string s) =>
+        System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(s.ToLower());
+
+    private class MapUnit
+    {
+        public string Nombre { get; set; } = "";
+        public double Lat { get; set; }
+        public double Lon { get; set; }
+        public int Avisos { get; set; }
+        public double Indemnizacion { get; set; }
+        public double Desembolso { get; set; }
+        public double HaIndemnizadas { get; set; }
+        public double Productores { get; set; }
+        public double PctDesembolso { get; set; }
+    }
+}

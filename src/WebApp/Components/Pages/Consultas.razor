@@ -1,46 +1,184 @@
 @page "/consultas"
 @rendermode InteractiveServer
+@inject IQueryLlmService LlmService
 @using WebApp.Components.Custom
+@using Application.Services
+@using Application.Contracts.Services
+@using Microsoft.AspNetCore.Components.Web
+@using System.Text.RegularExpressions
 
 <PageTitle>Consultas — SAC</PageTitle>
 
-<PageHeader Title="💬 Consultas SAC" Description="Haga preguntas sobre los datos del SAC en lenguaje natural" />
+<PageHeader Title="Consultas SAC" Description="Haga preguntas sobre los datos del SAC en lenguaje natural" />
 
 @if (Home.SharedDatos == null)
 {
-    <div class="alert alert-warning">⚠️ Primero cargue los datos en la página de <a href="/">Inicio</a>.</div>
+    <div class="alert alert-warning">Primero cargue los datos en la pagina de <a href="/">Inicio</a>.</div>
 }
 else
 {
-    <div class="chat-header">
-        <span>Motor de Consultas</span>
-        <span class="badge bg-secondary ms-2">⚙️ Motor Básico</span>
-    </div>
+    <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Motor de Consultas</span>
+            @if (LlmAvailable)
+            {
+                <span class="badge bg-success">IA + SQL (Claude)</span>
+            }
+            else
+            {
+                <span class="badge bg-secondary">Motor Basico</span>
+            }
+        </div>
+        <div class="card-body">
+            @if (LlmAvailable)
+            {
+                <div class="form-check form-switch mb-2">
+                    <input class="form-check-input" type="checkbox" id="useLlm" @bind="UseLlm" />
+                    <label class="form-check-label" for="useLlm">
+                        Usar IA + SQL (Claude API) — genera SQL, ejecuta y redacta texto profesional
+                    </label>
+                </div>
+            }
 
-    <div class="alert alert-info mt-3">
-        💡 Escriba su consulta en lenguaje natural. Ejemplos: "¿Cuántos avisos hay en Lambayeque?", "Top 5 departamentos por indemnización"
-    </div>
+            <p class="text-muted small mb-2">
+                @if (UseLlm && LlmAvailable)
+                {
+                    <text>Modo IA: su pregunta se convierte en SQL, se ejecuta sobre los datos y Claude redacta una respuesta profesional.</text>
+                }
+                else
+                {
+                    <text>Modo basico: deteccion de departamentos, siniestros, metricas y periodos por reglas.</text>
+                }
+            </p>
 
-    <div class="row mt-3">
-        <div class="col-12">
-            <textarea class="form-control" rows="3" @bind="QueryText" placeholder="Escriba su consulta aquí..."></textarea>
+            <div class="row">
+                <div class="col-12">
+                    <textarea class="form-control" rows="3" @bind="QueryText"
+                              @onkeydown="HandleKeyDown"
+                              placeholder="Escriba su consulta... Ej: Resumen de Cusco y Puno, Heladas en Huancavelica"></textarea>
+                </div>
+            </div>
+
+            <div class="row mt-2">
+                <div class="col-auto">
+                    <button class="btn btn-primary" @onclick="ExecuteQuery" disabled="@IsQuerying">
+                        @(IsQuerying ? "Consultando..." : "Consultar")
+                    </button>
+                </div>
+                @if (HasResult)
+                {
+                    <div class="col-auto">
+                        <button class="btn btn-outline-secondary btn-sm" @onclick="ClearResult">Limpiar</button>
+                    </div>
+                }
+            </div>
         </div>
     </div>
 
-    <div class="row mt-2">
-        <div class="col-12">
-            <button class="btn btn-primary" @onclick="ExecuteQuery" disabled="@IsQuerying">
-                @(IsQuerying ? "Consultando..." : "🔍 Consultar")
-            </button>
+    <!-- Consultas sugeridas -->
+    <div class="card mb-3">
+        <div class="card-header">Consultas sugeridas</div>
+        <div class="card-body">
+            <div class="d-flex flex-wrap gap-2">
+                @foreach (var suggestion in SuggestedQueries)
+                {
+                    <button class="btn btn-outline-secondary btn-sm" @onclick="() => UseSuggestion(suggestion)">
+                        @suggestion
+                    </button>
+                }
+            </div>
         </div>
     </div>
 
-    @if (!string.IsNullOrEmpty(ResultText))
+    <!-- Resultado basico -->
+    @if (!string.IsNullOrEmpty(BasicResult))
     {
-        <div class="action-card mt-3">
-            <h6>Resultado:</h6>
-            <p>@ResultText</p>
+        <div class="card mb-3">
+            <div class="card-header">Resultado</div>
+            <div class="card-body">
+                <div style="white-space:pre-wrap;font-size:0.9rem;line-height:1.6;">@((MarkupString)FormatMarkdown(BasicResult))</div>
+            </div>
         </div>
+    }
+
+    <!-- Resultado LLM -->
+    @if (LlmResult != null)
+    {
+        @if (LlmResult.Error != null)
+        {
+            <div class="alert alert-danger">@LlmResult.Error</div>
+        }
+
+        @if (!string.IsNullOrEmpty(LlmResult.Prose))
+        {
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between">
+                    <span>Respuesta IA</span>
+                    <span class="badge bg-success">Claude API</span>
+                </div>
+                <div class="card-body">
+                    <div style="white-space:pre-wrap;font-size:0.9rem;line-height:1.7;">@LlmResult.Prose</div>
+                </div>
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(LlmResult.Sql))
+        {
+            <details class="mb-3">
+                <summary class="btn btn-outline-secondary btn-sm">SQL generada</summary>
+                <pre class="bg-light p-3 mt-2 rounded" style="font-size:0.8rem;overflow-x:auto;">@LlmResult.Sql</pre>
+            </details>
+        }
+
+        @if (LlmResult.Data != null && LlmResult.Data.Count > 0)
+        {
+            <details class="mb-3">
+                <summary class="btn btn-outline-secondary btn-sm">Datos (@LlmResult.Data.Count filas)</summary>
+                <div class="table-responsive mt-2" style="max-height:400px;overflow-y:auto;">
+                    <table class="table table-sm table-striped table-bordered" style="font-size:0.75rem;">
+                        <thead class="table-primary sticky-top">
+                            <tr>
+                                @foreach (var col in LlmResult.Data[0].Keys)
+                                {
+                                    <th>@col</th>
+                                }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in LlmResult.Data.Take(50))
+                            {
+                                <tr>
+                                    @foreach (var val in row.Values)
+                                    {
+                                        <td>@val</td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </details>
+        }
+
+        @if (LlmResult.Summary != null)
+        {
+            <details class="mb-3">
+                <summary class="btn btn-outline-secondary btn-sm">Metricas verificadas</summary>
+                <div class="row mt-2">
+                    @foreach (var kv in LlmResult.Summary)
+                    {
+                        <div class="col-md-3 mb-2">
+                            <div class="card">
+                                <div class="card-body py-2 text-center">
+                                    <small class="text-muted">@kv.Key</small>
+                                    <div class="fw-bold">@FormatSummaryValue(kv.Key, kv.Value)</div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </details>
+        }
     }
 }
 
@@ -48,32 +186,108 @@ else
 
 @code {
     private string QueryText = "";
-    private string? ResultText;
+    private string? BasicResult;
+    private QueryLlmResult? LlmResult;
     private bool IsQuerying;
+    private bool UseLlm = true;
+    private readonly QueryEngineService _engine = new();
+
+    private bool LlmAvailable => LlmService.IsAvailable();
+    private bool HasResult => !string.IsNullOrEmpty(BasicResult) || LlmResult != null;
+
+    private static readonly List<string> SuggestedQueries = new()
+    {
+        "Resumen de Tumbes, Piura, Lambayeque, Lima y Arequipa",
+        "Intervenciones del SAC en Cajamarca y Lambayeque",
+        "Cuantos avisos por helada hay en Puno?",
+        "Desembolsos realizados en Junin y Cusco",
+        "Siniestralidad por departamento",
+        "Resumen de La Positiva vs Rimac",
+        "Avisos por provincia en Cusco y Junin",
+        "Top distritos con mayor indemnizacion en Lambayeque",
+        "Resumen por distrito en Piura con lluvias",
+    };
 
     private async Task ExecuteQuery()
     {
         if (string.IsNullOrWhiteSpace(QueryText) || Home.SharedDatos == null) return;
         IsQuerying = true;
+        BasicResult = null;
+        LlmResult = null;
         StateHasChanged();
 
-        await Task.Delay(500); // Simulate processing
+        try
+        {
+            if (UseLlm && LlmAvailable)
+            {
+                LlmResult = await LlmService.ProcessQueryAsync(QueryText, Home.SharedDatos);
 
-        var datos = Home.SharedDatos;
-        var q = QueryText.ToUpper();
+                // Fallback to basic if LLM fails completely
+                if (LlmResult.Error != null && LlmResult.Prose == null)
+                {
+                    var queryText = QueryText;
+                    var datos = Home.SharedDatos;
+                    BasicResult = await Task.Run(() => _engine.ProcessQuery(queryText, datos));
+                }
+            }
+            else
+            {
+                var queryText = QueryText;
+                var datos = Home.SharedDatos;
+                BasicResult = await Task.Run(() => _engine.ProcessQuery(queryText, datos));
+            }
+        }
+        catch (Exception ex)
+        {
+            BasicResult = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            IsQuerying = false;
+            StateHasChanged();
+        }
+    }
 
-        // Basic query engine (simplified port of query_engine.py)
-        if (q.Contains("TOTAL") && q.Contains("AVISO"))
-            ResultText = $"El total de avisos de siniestro registrados es {datos.Metricas.TotalAvisos:N0}.";
-        else if (q.Contains("INDEMNIZ"))
-            ResultText = $"El monto total indemnizado es S/ {datos.Metricas.MontoIndemnizado:N2}. La siniestralidad es {datos.Metricas.IndiceSiniestralidad:F2}%.";
-        else if (q.Contains("DESEMBOL"))
-            ResultText = $"Se han desembolsado S/ {datos.Metricas.MontoDesembolsado:N2} ({datos.Metricas.PctDesembolso:F1}%) a {datos.Metricas.ProductoresDesembolso:N0} productores.";
-        else if (q.Contains("DEPARTAMENTO") || q.Contains("DEPTO"))
-            ResultText = $"Hay datos de {datos.DepartamentosList.Count} departamentos: {string.Join(", ", datos.DepartamentosList.Take(10).Select(d => System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(d.ToLower())))}...";
-        else
-            ResultText = $"Datos disponibles: {datos.Metricas.TotalAvisos:N0} avisos en {datos.DepartamentosList.Count} departamentos. Indemnización: S/ {datos.Metricas.MontoIndemnizado:N2}. Use preguntas sobre avisos, indemnizaciones, desembolsos o departamentos.";
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && e.CtrlKey)
+            await ExecuteQuery();
+    }
 
-        IsQuerying = false;
+    private void UseSuggestion(string suggestion)
+    {
+        QueryText = suggestion;
+        StateHasChanged();
+    }
+
+    private void ClearResult()
+    {
+        BasicResult = null;
+        LlmResult = null;
+        QueryText = "";
+    }
+
+    private static string FormatMarkdown(string text)
+    {
+        text = System.Net.WebUtility.HtmlEncode(text);
+        text = Regex.Replace(text, @"^### (.+)$", "<h5>$1</h5>", RegexOptions.Multiline);
+        text = Regex.Replace(text, @"^## (.+)$", "<h4>$1</h4>", RegexOptions.Multiline);
+        text = Regex.Replace(text, @"\*\*(.+?)\*\*", "<strong>$1</strong>");
+        text = Regex.Replace(text, @"^- (.+)$", "<li>$1</li>", RegexOptions.Multiline);
+        text = text.Replace("---", "<hr/>");
+        text = Regex.Replace(text, @"\*(.+?)\*", "<em>$1</em>");
+        return text;
+    }
+
+    private static string FormatSummaryValue(string key, object val)
+    {
+        var k = key.ToLower();
+        if (k.Contains("indemnizacion") || k.Contains("desembolso"))
+            return $"S/ {Convert.ToDouble(val):N2}";
+        if (k.Contains("pct") || k.Contains("avance"))
+            return $"{Convert.ToDouble(val):F1}%";
+        if (k.Contains("ha"))
+            return $"{Convert.ToDouble(val):N2} ha";
+        return $"{val:N0}";
     }
 }

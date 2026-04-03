@@ -1,21 +1,353 @@
 @page "/clima-riesgo"
 @rendermode InteractiveServer
+@inject IStaticDataRepository StaticRepo
+@inject IHttpClientFactory HttpFactory
 @using WebApp.Components.Custom
+@using Application.DTOs.Responses
+@using System.Text.Json
 
 <PageTitle>Clima y Riesgo — SAC</PageTitle>
 
-<PageHeader Title="🌦️ Clima y Riesgo" Description="Pronóstico meteorológico y evaluación de riesgo agrícola por distrito" />
+<PageHeader Title="Clima y Riesgo" Description="Pronostico meteorologico y evaluacion de riesgo agricola por departamento" />
 
 @if (Home.SharedDatos == null)
 {
-    <div class="alert alert-warning">⚠️ Primero cargue los datos en la página de <a href="/">Inicio</a>.</div>
+    <div class="alert alert-warning">Primero cargue los datos en la pagina de <a href="/">Inicio</a>.</div>
 }
 else
 {
-    <div class="alert alert-info">
-        🌦️ Esta sección integra datos del pronóstico meteorológico (Open-Meteo API) con perfiles de riesgo
-        histórico por distrito para generar alertas de riesgo agrícola. Se habilitará en una actualización futura.
+    <!-- Selector -->
+    <div class="row mb-3">
+        <div class="col-md-4">
+            <label class="form-label fw-bold">Departamento:</label>
+            <select class="form-select" @bind="SelectedDepto">
+                <option value="">-- Todos (resumen nacional) --</option>
+                @foreach (var d in Home.SharedDatos.DepartamentosList.OrderBy(x => x))
+                {
+                    <option value="@d">@ToTitle(d)</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label fw-bold">&nbsp;</label>
+            <button class="btn btn-primary d-block" @onclick="FetchForecast" disabled="@IsLoading">
+                @(IsLoading ? "Consultando API..." : "Consultar pronostico")
+            </button>
+        </div>
     </div>
+
+    @if (ErrorMessage != null)
+    {
+        <div class="alert alert-danger">@ErrorMessage</div>
+    }
+
+    @if (IsLoading)
+    {
+        <div class="text-center my-5">
+            <div class="spinner-border text-primary"></div>
+            <p class="mt-2">Consultando Open-Meteo API (gratuita, sin API key)...</p>
+        </div>
+    }
+    else if (DeptRisks.Count > 0)
+    {
+        <!-- Resumen nacional -->
+        <div class="row mb-3">
+            <div class="col-md-3">
+                <MetricCard Label="Alto Riesgo" Value="@RiskCountRojo.ToString()" Delta="departamentos" Accent="red" />
+            </div>
+            <div class="col-md-3">
+                <MetricCard Label="Riesgo Moderado" Value="@RiskCountAmbar.ToString()" Delta="departamentos" Accent="amber" />
+            </div>
+            <div class="col-md-3">
+                <MetricCard Label="Bajo Riesgo" Value="@RiskCountVerde.ToString()" Delta="departamentos" Accent="green" />
+            </div>
+            <div class="col-md-3">
+                <MetricCard Label="Consultados" Value="@DeptRisks.Count.ToString()" Delta="departamentos" Accent="blue" />
+            </div>
+        </div>
+
+        <!-- Alertas -->
+        @if (RiskAlertas.Count > 0)
+        {
+            <div class="card mb-3">
+                <div class="card-header bg-warning text-dark"><strong>Alertas de Riesgo Agricola</strong></div>
+                <div class="card-body">
+                    @foreach (var (dept, risk) in RiskAlertas)
+                    {
+                        var bgClass = risk.Nivel == "rojo" ? "danger" : "warning";
+                        <div class="alert alert-@bgClass py-2 mb-2">
+                            <strong>@ToTitle(dept)</strong> — Score: @risk.Score/100
+                            | Lluvia 7d: @risk.Precip7d mm (@risk.NivelLluvia)
+                            | T.max: @(risk.TempMax?.ToString("F1") ?? "N/D") C
+                            | T.min: @(risk.TempMin?.ToString("F1") ?? "N/D") C
+                            | Viento: @(risk.WindMax?.ToString("F1") ?? "N/D") km/h
+                            @if (risk.CultivosEnRiesgo.Count > 0)
+                            {
+                                <br /><small>Cultivos en riesgo: @string.Join(", ", risk.CultivosEnRiesgo)</small>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
+        <!-- Tabla detallada -->
+        <h5>Detalle del Pronostico 7 dias</h5>
+        <div class="table-responsive">
+            <table class="table table-sm table-striped table-bordered">
+                <thead class="table-primary">
+                    <tr>
+                        <th>Departamento</th><th class="text-center">Nivel</th><th class="text-end">Score</th>
+                        <th class="text-end">Lluvia 7d (mm)</th><th class="text-end">Max Lluvia/dia</th>
+                        <th class="text-end">T. Max (C)</th><th class="text-end">T. Min (C)</th>
+                        <th class="text-end">Viento Max (km/h)</th>
+                        <th>Lluvia</th><th>Temp</th><th>Viento</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var (dept, risk) in DeptRisks.OrderByDescending(r => r.Value.Score))
+                    {
+                        var badgeClass = risk.Nivel switch { "rojo" => "bg-danger", "ambar" => "bg-warning text-dark", _ => "bg-success" };
+                        <tr>
+                            <td class="fw-bold">@ToTitle(dept)</td>
+                            <td class="text-center"><span class="badge @badgeClass">@risk.Nivel.ToUpper()</span></td>
+                            <td class="text-end">@risk.Score</td>
+                            <td class="text-end">@risk.Precip7d.ToString("F1")</td>
+                            <td class="text-end">@risk.MaxPrecipDay.ToString("F1")</td>
+                            <td class="text-end">@(risk.TempMax?.ToString("F1") ?? "—")</td>
+                            <td class="text-end">@(risk.TempMin?.ToString("F1") ?? "—")</td>
+                            <td class="text-end">@(risk.WindMax?.ToString("F1") ?? "—")</td>
+                            <td>@RenderNivel(risk.NivelLluvia)</td>
+                            <td>@RenderNivel(risk.NivelTemp)</td>
+                            <td>@RenderNivel(risk.NivelViento)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <p class="text-muted small mt-2">
+            Fuente: Open-Meteo API (gratuita). Umbrales: Lluvia diaria > 20mm = ambar, > 50mm = rojo;
+            Lluvia 7d > 80mm = ambar, > 150mm = rojo; T.min &lt; 10C = ambar, &lt; 5C = rojo;
+            Viento > 40km/h = ambar, > 60km/h = rojo. Bonus historico por calendario agricola y perfil distrital.
+        </p>
+    }
+    else
+    {
+        <div class="alert alert-info">
+            Haga clic en "Consultar pronostico" para obtener datos meteorologicos de Open-Meteo API.
+            La consulta es gratuita y no requiere API key.
+        </div>
+    }
 }
 
 <SacFooter />
+
+@code {
+    private string SelectedDepto = "";
+    private bool IsLoading;
+    private string? ErrorMessage;
+    private Dictionary<string, DeptRiskResult> DeptRisks = new();
+
+    private int RiskCountRojo => DeptRisks.Count(r => r.Value.Nivel == "rojo");
+    private int RiskCountAmbar => DeptRisks.Count(r => r.Value.Nivel == "ambar");
+    private int RiskCountVerde => DeptRisks.Count(r => r.Value.Nivel == "verde");
+    private List<KeyValuePair<string, DeptRiskResult>> RiskAlertas =>
+        DeptRisks.Where(r => r.Value.Nivel != "verde").OrderByDescending(r => r.Value.Score).ToList();
+
+    private static readonly Dictionary<string, (double lat, double lon)> DeptCoords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["AMAZONAS"] = (-6.23, -77.86), ["ANCASH"] = (-9.53, -77.53), ["APURIMAC"] = (-14.05, -72.88),
+        ["AREQUIPA"] = (-15.52, -72.09), ["AYACUCHO"] = (-13.64, -73.98), ["CAJAMARCA"] = (-7.16, -78.51),
+        ["CUSCO"] = (-13.53, -71.97), ["HUANCAVELICA"] = (-12.79, -75.02), ["HUANUCO"] = (-9.93, -76.24),
+        ["ICA"] = (-14.07, -75.73), ["JUNIN"] = (-11.50, -75.00), ["LA LIBERTAD"] = (-7.77, -78.71),
+        ["LAMBAYEQUE"] = (-6.70, -79.91), ["LIMA"] = (-11.76, -76.60), ["LORETO"] = (-4.65, -74.96),
+        ["MADRE DE DIOS"] = (-12.59, -70.04), ["MOQUEGUA"] = (-17.19, -70.93), ["PASCO"] = (-10.40, -75.52),
+        ["PIURA"] = (-5.18, -80.10), ["PUNO"] = (-14.84, -70.02), ["SAN MARTIN"] = (-7.18, -76.73),
+        ["TACNA"] = (-17.62, -70.26), ["TUMBES"] = (-3.57, -80.44), ["UCAYALI"] = (-9.83, -73.09),
+    };
+
+    private static readonly Dictionary<string, double> RiskThresholds = new()
+    {
+        ["precip_daily_amber"] = 20, ["precip_daily_red"] = 50,
+        ["precip_7day_amber"] = 80, ["precip_7day_red"] = 150,
+        ["temp_high_amber"] = 32, ["temp_high_red"] = 36,
+        ["temp_low_amber"] = 10, ["temp_low_red"] = 5,
+        ["wind_amber"] = 40, ["wind_red"] = 60,
+    };
+
+    private Dictionary<string, List<CalendarioCultivoDto>>? _calendario;
+
+    private async Task FetchForecast()
+    {
+        IsLoading = true;
+        ErrorMessage = null;
+        DeptRisks.Clear();
+        StateHasChanged();
+
+        try
+        {
+            _calendario ??= StaticRepo.LoadCalendarioAgricola();
+
+            var deptsToQuery = string.IsNullOrEmpty(SelectedDepto)
+                ? Home.SharedDatos!.DepartamentosList.Where(d => DeptCoords.ContainsKey(d.ToUpper())).ToList()
+                : new List<string> { SelectedDepto };
+
+            using var http = HttpFactory.CreateClient();
+            http.Timeout = TimeSpan.FromSeconds(30);
+
+            foreach (var dept in deptsToQuery)
+            {
+                var deptUpper = dept.ToUpper();
+                if (!DeptCoords.TryGetValue(deptUpper, out var coords)) continue;
+
+                try
+                {
+                    var url = $"https://api.open-meteo.com/v1/forecast?latitude={coords.lat.ToString(System.Globalization.CultureInfo.InvariantCulture)}&longitude={coords.lon.ToString(System.Globalization.CultureInfo.InvariantCulture)}&daily=precipitation_sum,temperature_2m_max,temperature_2m_min,windspeed_10m_max,weathercode&timezone=America/Lima&forecast_days=7";
+                    var json = await http.GetStringAsync(url);
+                    using var doc = JsonDocument.Parse(json);
+
+                    if (doc.RootElement.TryGetProperty("daily", out var daily))
+                    {
+                        var risk = ComputeRisk(deptUpper, daily);
+                        DeptRisks[deptUpper] = risk;
+                    }
+
+                    await Task.Delay(50); // Rate limiting
+                }
+                catch
+                {
+                    DeptRisks[deptUpper] = new DeptRiskResult { Nivel = "verde", SinDatos = true };
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error al consultar Open-Meteo: {ex.Message}";
+        }
+        finally
+        {
+            IsLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private DeptRiskResult ComputeRisk(string dept, JsonElement daily)
+    {
+        var precip = GetDoubleArray(daily, "precipitation_sum");
+        var tMax = GetDoubleArray(daily, "temperature_2m_max");
+        var tMin = GetDoubleArray(daily, "temperature_2m_min");
+        var wind = GetDoubleArray(daily, "windspeed_10m_max");
+
+        var precip7d = precip.Sum();
+        var maxPrecipDay = precip.Count > 0 ? precip.Max() : 0;
+        var maxTemp = tMax.Count > 0 ? tMax.Max() : (double?)null;
+        var minTemp = tMin.Count > 0 ? tMin.Min() : (double?)null;
+        var maxWind = wind.Count > 0 ? wind.Max() : (double?)null;
+
+        var T = RiskThresholds;
+        var nivelLluviaDay = Classify(maxPrecipDay, T["precip_daily_amber"], T["precip_daily_red"]);
+        var nivelLluvia7d = Classify(precip7d, T["precip_7day_amber"], T["precip_7day_red"]);
+        var nivelLluvia = MaxNivel(nivelLluviaDay, nivelLluvia7d);
+
+        var nivelTempHigh = maxTemp.HasValue ? Classify(maxTemp.Value, T["temp_high_amber"], T["temp_high_red"]) : "verde";
+        var nivelTempLow = minTemp.HasValue ? ClassifyInvert(minTemp.Value, T["temp_low_amber"], T["temp_low_red"]) : "verde";
+        var nivelTemp = MaxNivel(nivelTempHigh, nivelTempLow);
+
+        var nivelViento = maxWind.HasValue ? Classify(maxWind.Value, T["wind_amber"], T["wind_red"]) : "verde";
+
+        var scoreLluvia = NivelToScore(nivelLluvia) * 0.40;
+        var scoreTemp = NivelToScore(nivelTemp) * 0.30;
+        var scoreViento = NivelToScore(nivelViento) * 0.15;
+
+        // Bonus historico calendario agricola
+        double calBonus = 0;
+        var cultivosEnRiesgo = new List<string>();
+        if (_calendario != null && _calendario.TryGetValue(dept, out var cultivos))
+        {
+            var currentMonth = DateTime.Now.Month;
+            foreach (var c in cultivos)
+            {
+                if (!c.MesesRiesgo.Contains(currentMonth) || c.Riesgos.Count == 0) continue;
+                var riesgosUpper = c.Riesgos.Select(r => r.ToUpper()).ToHashSet();
+                if ((riesgosUpper.Contains("INUNDACION") || riesgosUpper.Contains("LLUVIAS EXCESIVAS") || riesgosUpper.Contains("HUAYCO"))
+                    && nivelLluvia != "verde")
+                {
+                    calBonus = Math.Max(calBonus, 15);
+                    cultivosEnRiesgo.Add(c.Cultivo);
+                }
+                else if ((riesgosUpper.Contains("HELADA") || riesgosUpper.Contains("FRIAJE"))
+                    && nivelTemp != "verde")
+                {
+                    calBonus = Math.Max(calBonus, 15);
+                    cultivosEnRiesgo.Add(c.Cultivo);
+                }
+                else if (riesgosUpper.Contains("SEQUIA") && precip7d < 5)
+                {
+                    calBonus = Math.Max(calBonus, 10);
+                    cultivosEnRiesgo.Add(c.Cultivo);
+                }
+            }
+        }
+
+        var score = Math.Min(100, (int)(scoreLluvia + scoreTemp + scoreViento + calBonus));
+        var nivel = score >= 60 ? "rojo" : score >= 30 ? "ambar" : "verde";
+
+        return new DeptRiskResult
+        {
+            Nivel = nivel, Score = score,
+            Precip7d = Math.Round(precip7d, 1), MaxPrecipDay = Math.Round(maxPrecipDay, 1),
+            TempMax = maxTemp.HasValue ? Math.Round(maxTemp.Value, 1) : null,
+            TempMin = minTemp.HasValue ? Math.Round(minTemp.Value, 1) : null,
+            WindMax = maxWind.HasValue ? Math.Round(maxWind.Value, 1) : null,
+            NivelLluvia = nivelLluvia, NivelTemp = nivelTemp, NivelViento = nivelViento,
+            CultivosEnRiesgo = cultivosEnRiesgo.Distinct().ToList(),
+        };
+    }
+
+    private static List<double> GetDoubleArray(JsonElement el, string prop)
+    {
+        if (!el.TryGetProperty(prop, out var arr) || arr.ValueKind != JsonValueKind.Array)
+            return new();
+        return arr.EnumerateArray()
+            .Where(x => x.ValueKind == JsonValueKind.Number)
+            .Select(x => x.GetDouble()).ToList();
+    }
+
+    private static string Classify(double val, double amber, double red) =>
+        val >= red ? "rojo" : val >= amber ? "ambar" : "verde";
+
+    private static string ClassifyInvert(double val, double amber, double red) =>
+        val < red ? "rojo" : val < amber ? "ambar" : "verde";
+
+    private static string MaxNivel(params string[] niveles) =>
+        niveles.Contains("rojo") ? "rojo" : niveles.Contains("ambar") ? "ambar" : "verde";
+
+    private static double NivelToScore(string nivel) =>
+        nivel == "rojo" ? 100 : nivel == "ambar" ? 50 : 0;
+
+    private static RenderFragment RenderNivel(string nivel) => __builder =>
+    {
+        var cls = nivel switch { "rojo" => "bg-danger", "ambar" => "bg-warning text-dark", _ => "bg-success" };
+        <span class="badge @cls">@nivel</span>
+    };
+
+    private static string ToTitle(string s) =>
+        System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(s.ToLower());
+
+    private class DeptRiskResult
+    {
+        public string Nivel { get; set; } = "verde";
+        public int Score { get; set; }
+        public double Precip7d { get; set; }
+        public double MaxPrecipDay { get; set; }
+        public double? TempMax { get; set; }
+        public double? TempMin { get; set; }
+        public double? WindMax { get; set; }
+        public string NivelLluvia { get; set; } = "verde";
+        public string NivelTemp { get; set; } = "verde";
+        public string NivelViento { get; set; } = "verde";
+        public bool SinDatos { get; set; }
+        public List<string> CultivosEnRiesgo { get; set; } = new();
+    }
+}

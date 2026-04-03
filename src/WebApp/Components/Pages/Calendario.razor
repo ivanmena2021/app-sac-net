@@ -1,22 +1,310 @@
 @page "/calendario"
 @rendermode InteractiveServer
+@inject IStaticDataRepository StaticRepo
 @using WebApp.Components.Custom
+@using Application.DTOs.Responses
 
-<PageTitle>Calendario Agrícola — SAC</PageTitle>
+<PageTitle>Calendario Agricola — SAC</PageTitle>
 
-<PageHeader Title="📅 Calendario Agrícola" Description="Períodos de siembra, cosecha y riesgo por departamento basados en 5 campañas históricas" />
+<PageHeader Title="Calendario Agricola" Description="Periodos de siembra, cosecha y riesgo por departamento basados en 5 campanas historicas (66,000+ registros)" />
 
 @if (Home.SharedDatos == null)
 {
-    <div class="alert alert-warning">⚠️ Primero cargue los datos en la página de <a href="/">Inicio</a>.</div>
+    <div class="alert alert-warning">Primero cargue los datos en la pagina de <a href="/">Inicio</a>.</div>
+}
+else if (CalendarioData == null)
+{
+    <div class="text-center my-5"><div class="spinner-border text-primary"></div><p class="mt-2">Cargando calendario...</p></div>
 }
 else
 {
-    <div class="alert alert-info">
-        📅 El calendario agrícola muestra los períodos de siembra, cosecha y riesgo climático para cada cultivo y departamento,
-        basado en el análisis de 66,000+ registros de siniestros de 5 campañas anteriores.
-        La integración completa se habilitará en una actualización futura.
+    <!-- Selector de departamento -->
+    <div class="row mb-3">
+        <div class="col-md-4">
+            <label class="form-label fw-bold">Departamento:</label>
+            <select class="form-select" @bind="SelectedDepto">
+                @foreach (var d in DeptList)
+                {
+                    <option value="@d">@ToTitleCase(d)</option>
+                }
+            </select>
+        </div>
     </div>
+
+    <!-- Alerta de riesgo mes actual -->
+    @if (CurrentAtRisk.Count > 0)
+    {
+        <div class="alert alert-warning">
+            <strong>Alerta - @MonthNames[CurrentMonth - 1] @DateTime.Now.Year:</strong>
+            Cultivos en periodo de riesgo en @ToTitleCase(SelectedDepto):
+            <ul class="mb-0 mt-1">
+                @foreach (var item in CurrentAtRisk)
+                {
+                    var statusParts = new List<string>();
+                    if (item.enSiembra) statusParts.Add("en siembra");
+                    if (item.enCosecha) statusParts.Add("en cosecha");
+                    <li><strong>@item.cultivo</strong> (@string.Join(" y ", statusParts)) — Riesgos: @string.Join(", ", item.riesgos)</li>
+                }
+            </ul>
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-info">
+            No hay cultivos en periodo de riesgo activo en @ToTitleCase(SelectedDepto) para @MonthNames[CurrentMonth - 1].
+        </div>
+    }
+
+    <!-- Calendario Gantt: Siembra / Cosecha / Riesgo -->
+    @if (CurrentCultivos.Count > 0)
+    {
+        <h5 class="mt-3">Calendario Agricola — @ToTitleCase(SelectedDepto)</h5>
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered mb-3" style="font-size:0.8rem;">
+                <thead class="table-light">
+                    <tr>
+                        <th style="min-width:140px;">Cultivo</th>
+                        @for (int m = 1; m <= 12; m++)
+                        {
+                            <th class="text-center @(m == CurrentMonth ? "table-warning" : "")" style="width:55px;">
+                                @MonthNames[m - 1]
+                                @if (m == CurrentMonth)
+                                {
+                                    <div style="font-size:0.6rem;color:#2c3e50;">HOY</div>
+                                }
+                            </th>
+                        }
+                        <th class="text-end" style="min-width:60px;">Avisos</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var cult in CurrentCultivos.OrderByDescending(c => c.TotalAvisos))
+                    {
+                        var siembraSet = new HashSet<int>(cult.MesesSiembra);
+                        var cosechaSet = new HashSet<int>(cult.MesesCosecha);
+                        var riesgoSet = new HashSet<int>(cult.MesesRiesgo);
+                        <tr>
+                            <td class="fw-bold">@cult.Cultivo</td>
+                            @for (int m = 1; m <= 12; m++)
+                            {
+                                var inSiembra = siembraSet.Contains(m);
+                                var inCosecha = cosechaSet.Contains(m);
+                                var inRiesgo = riesgoSet.Contains(m) && cult.Riesgos.Count > 0;
+                                var bgColor = "transparent";
+                                var symbol = "";
+
+                                if (inSiembra && inCosecha) { bgColor = "#2ecc71"; symbol = "S+C"; }
+                                else if (inSiembra) { bgColor = "#27ae60"; symbol = "S"; }
+                                else if (inCosecha) { bgColor = "#f39c12"; symbol = "C"; }
+
+                                var riskMark = inRiesgo ? "diamond" : "";
+
+                                <td class="text-center position-relative" style="background-color:@(bgColor != "transparent" ? bgColor + "33" : "transparent");">
+                                    @if (bgColor != "transparent")
+                                    {
+                                        <div style="position:absolute;inset:2px;background:@bgColor;opacity:0.3;border-radius:3px;"></div>
+                                    }
+                                    <span style="position:relative;z-index:1;font-size:0.65rem;color:#333;">@symbol</span>
+                                    @if (inRiesgo)
+                                    {
+                                        <div style="position:absolute;top:1px;right:2px;width:8px;height:8px;background:#e74c3c;clip-path:polygon(50% 0%,100% 50%,50% 100%,0% 50%);z-index:2;" title="Riesgo: @string.Join(", ", cult.Riesgos)"></div>
+                                    }
+                                </td>
+                            }
+                            <td class="text-end">@cult.TotalAvisos.ToString("N0")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-info">No hay datos de calendario disponibles para @ToTitleCase(SelectedDepto).</div>
+    }
+
+    <!-- Cruce con siniestros reales -->
+    <h5 class="mt-4">Cruce con Siniestros Reales</h5>
+    @if (CurrentCrossData.Count > 0)
+    {
+        <div class="table-responsive" style="max-height:400px;overflow-y:auto;">
+            <table class="table table-sm table-striped table-bordered">
+                <thead class="table-primary sticky-top">
+                    <tr>
+                        <th>Cultivo</th><th>Tipo Siniestro</th><th class="text-end">Avisos</th>
+                        <th>En Calendario</th><th>Coincide</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in CurrentCrossData)
+                    {
+                        <tr>
+                            <td>@row.Cultivo</td>
+                            <td>@row.TipoSiniestro</td>
+                            <td class="text-end">@row.Avisos</td>
+                            <td><span class="badge @(row.EnCalendario ? "bg-success" : "bg-secondary")">@(row.EnCalendario ? "Si" : "No")</span></td>
+                            <td>
+                                @if (row.Coincide == "Si")
+                                {
+                                    <span class="badge bg-success">Riesgo esperado</span>
+                                }
+                                else if (row.Coincide == "No")
+                                {
+                                    <span class="badge bg-warning text-dark">No esperado</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">N/A</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="row mt-2">
+            <div class="col-md-3">
+                <MetricCard Label="Coincidencia con riesgos esperados" Value="@($"{CrossPctCoincide:F1}%")"
+                            Delta="@($"{CrossCoincideCount} de {CrossTotalAvisos} avisos")"
+                            Accent="@(CrossPctCoincide > 60 ? "green" : CrossPctCoincide > 30 ? "amber" : "red")" />
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-info">No hay datos de siniestros disponibles para @ToTitleCase(SelectedDepto).</div>
+    }
+
+    <!-- Leyenda -->
+    <hr />
+    <div class="d-flex flex-wrap gap-4 mb-3">
+        <div class="d-flex align-items-center gap-2">
+            <div style="width:20px;height:14px;background:#27ae60;border-radius:3px;"></div> <small>Siembra (S)</small>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <div style="width:20px;height:14px;background:#f39c12;border-radius:3px;"></div> <small>Cosecha (C)</small>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <div style="width:20px;height:14px;background:#2ecc71;border-radius:3px;"></div> <small>Siembra + Cosecha (S+C)</small>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <div style="width:14px;height:14px;background:#e74c3c;clip-path:polygon(50% 0%,100% 50%,50% 100%,0% 50%);"></div> <small>Riesgo</small>
+        </div>
+    </div>
+    <p class="text-muted small">
+        Datos basados en el analisis de 66,000+ registros de siniestros de 5 campanas historicas (2020-2025).
+        Los periodos de siembra y cosecha se derivan de fechas reales (FECHA_SIEMBRA, FECHA_AJUSTE en fenologia MADURACION).
+        Los riesgos priorizan datos de eventos indemnizados (mayor certeza) sobre avisos generales.
+    </p>
 }
 
 <SacFooter />
+
+@code {
+    private static readonly string[] MonthNames = { "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic" };
+
+    private Dictionary<string, List<CalendarioCultivoDto>>? CalendarioData;
+    private List<string> DeptList = new();
+    private string SelectedDepto = "";
+
+    private int CurrentMonth => DateTime.Now.Month;
+    private List<(string cultivo, List<string> riesgos, bool enSiembra, bool enCosecha)> CurrentAtRisk =>
+        GetCurrentRiskCrops(SelectedDepto, CurrentMonth);
+    private List<CalendarioCultivoDto> CurrentCultivos => GetDeptCultivos(SelectedDepto);
+    private List<CrossRefRow> CurrentCrossData => BuildCrossReference(SelectedDepto);
+    private int CrossTotalAvisos => CurrentCrossData.Sum(r => r.Avisos);
+    private int CrossCoincideCount => CurrentCrossData.Where(r => r.Coincide == "Si").Sum(r => r.Avisos);
+    private double CrossPctCoincide => CrossTotalAvisos > 0 ? (100.0 * CrossCoincideCount / CrossTotalAvisos) : 0;
+
+    protected override void OnInitialized()
+    {
+        if (Home.SharedDatos == null) return;
+        CalendarioData = StaticRepo.LoadCalendarioAgricola();
+
+        // Unir departamentos del calendario con los de datos actuales
+        var calDepts = CalendarioData.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var dataDepts = Home.SharedDatos.DepartamentosList
+            .Select(d => d.ToUpper())
+            .Where(d => calDepts.Contains(d))
+            .ToList();
+
+        DeptList = dataDepts.Count > 0
+            ? dataDepts.OrderBy(d => d).ToList()
+            : CalendarioData.Keys.OrderBy(d => d).ToList();
+
+        if (DeptList.Count > 0)
+            SelectedDepto = DeptList[0];
+    }
+
+    private List<CalendarioCultivoDto> GetDeptCultivos(string depto)
+    {
+        if (CalendarioData == null || string.IsNullOrEmpty(depto)) return new();
+        return CalendarioData.TryGetValue(depto, out var list) ? list : new();
+    }
+
+    private List<(string cultivo, List<string> riesgos, bool enSiembra, bool enCosecha)> GetCurrentRiskCrops(string depto, int month)
+    {
+        var cultivos = GetDeptCultivos(depto);
+        var result = new List<(string, List<string>, bool, bool)>();
+        foreach (var c in cultivos)
+        {
+            var inSiembra = c.MesesSiembra.Contains(month);
+            var inCosecha = c.MesesCosecha.Contains(month);
+            var inRiesgo = c.MesesRiesgo.Contains(month);
+            if ((inRiesgo || inSiembra || inCosecha) && c.Riesgos.Count > 0)
+                result.Add((c.Cultivo, c.Riesgos, inSiembra, inCosecha));
+        }
+        return result;
+    }
+
+    private List<CrossRefRow> BuildCrossReference(string depto)
+    {
+        if (Home.SharedDatos == null || string.IsNullOrEmpty(depto)) return new();
+        var midagri = Home.SharedDatos.Midagri;
+        var deptoUpper = depto.ToUpper();
+        var deptRecords = midagri.Where(s => s.Departamento.ToUpper() == deptoUpper).ToList();
+        if (deptRecords.Count == 0) return new();
+
+        var calCrops = GetDeptCultivos(depto)
+            .ToDictionary(c => c.Cultivo.ToUpper(), c => c, StringComparer.OrdinalIgnoreCase);
+
+        var grouped = deptRecords
+            .GroupBy(s => (Cultivo: s.TipoCultivo?.Trim().ToUpper() ?? "", Tipo: s.TipoSiniestro?.Trim().ToUpper() ?? ""))
+            .Select(g => new { g.Key.Cultivo, g.Key.Tipo, Count = g.Count() })
+            .OrderByDescending(g => g.Count)
+            .ToList();
+
+        var result = new List<CrossRefRow>();
+        foreach (var g in grouped)
+        {
+            var enCal = calCrops.ContainsKey(g.Cultivo);
+            string coincide = "N/A";
+            if (enCal)
+            {
+                var allRisks = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var r in calCrops[g.Cultivo].Riesgos) allRisks.Add(r);
+                foreach (var r in calCrops[g.Cultivo].RiesgosAvisos) allRisks.Add(r);
+                coincide = allRisks.Contains(g.Tipo) ? "Si" : "No";
+            }
+            result.Add(new CrossRefRow
+            {
+                Cultivo = g.Cultivo, TipoSiniestro = g.Tipo,
+                Avisos = g.Count, EnCalendario = enCal, Coincide = coincide,
+            });
+        }
+        return result;
+    }
+
+    private static string ToTitleCase(string s) =>
+        System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(s.ToLower());
+
+    private class CrossRefRow
+    {
+        public string Cultivo { get; set; } = "";
+        public string TipoSiniestro { get; set; } = "";
+        public int Avisos { get; set; }
+        public bool EnCalendario { get; set; }
+        public string Coincide { get; set; } = "N/A";
+    }
+}

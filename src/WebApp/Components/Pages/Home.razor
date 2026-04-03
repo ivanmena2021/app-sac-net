@@ -1,6 +1,7 @@
 @page "/"
 @rendermode InteractiveServer
 @inject IDataProcessorService DataProcessor
+@inject IAutoDownloadService AutoDownloader
 @using WebApp.Components.Custom
 
 <PageTitle>SAC 2025-2026 — Dashboard</PageTitle>
@@ -12,7 +13,29 @@
         <h1>🌾 SAC 2025 — 2026</h1>
         <p>Seguro Agrícola Catastrófico — MIDAGRI</p>
         <p class="text-light opacity-75">Dashboard de monitoreo y generación de reportes</p>
+        <small class="text-light opacity-50">@DateTime.Now.ToString("dd/MM/yyyy HH:mm")</small>
     </div>
+
+    <!-- Auto-download option -->
+    @if (AutoDownloader.IsConfigured())
+    {
+        <div class="card mb-3 border-success">
+            <div class="card-body text-center">
+                <button class="btn btn-success btn-lg px-5" @onclick="AutoDownload" disabled="@IsAutoDownloading">
+                    @if (IsAutoDownloading)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2"></span>
+                        <span>@AutoDownloadStatus</span>
+                    }
+                    else
+                    {
+                        <span>Actualizar Datos SAC (descarga automatica)</span>
+                    }
+                </button>
+                <p class="text-muted small mt-2 mb-0">Descarga directa desde SISGAQSAC (Rimac) y Agroevaluaciones (La Positiva)</p>
+            </div>
+        </div>
+    }
 
     <!-- Stepper -->
     <Stepper Steps="@CurrentSteps" />
@@ -212,6 +235,76 @@ else
         finally
         {
             IsProcessing = false;
+            StateHasChanged();
+        }
+    }
+
+    // ── Auto-download ──
+    private bool IsAutoDownloading;
+    private string AutoDownloadStatus = "";
+
+    private async Task AutoDownload()
+    {
+        IsAutoDownloading = true;
+        ErrorMessage = null;
+        CurrentSteps[0].Status = "active";
+        StateHasChanged();
+
+        try
+        {
+            // Step 1: Download Rimac (siniestros)
+            AutoDownloadStatus = "Descargando Rimac...";
+            StateHasChanged();
+            var rimac = await AutoDownloader.DescargarRimacAsync(s =>
+            {
+                AutoDownloadStatus = s;
+                InvokeAsync(StateHasChanged);
+            });
+
+            if (!rimac.Success)
+            {
+                ErrorMessage = rimac.Error;
+                CurrentSteps[0].Status = "error";
+                return;
+            }
+            CurrentSteps[0].Status = "done";
+            SiniestrosBytes = rimac.FileBytes;
+            SiniestrosFileName = rimac.FileName;
+
+            // Step 2: Download La Positiva (midagri)
+            CurrentSteps[1].Status = "active";
+            AutoDownloadStatus = "Descargando La Positiva...";
+            StateHasChanged();
+            var lp = await AutoDownloader.DescargarLaPositivaAsync(s =>
+            {
+                AutoDownloadStatus = s;
+                InvokeAsync(StateHasChanged);
+            });
+
+            if (!lp.Success)
+            {
+                ErrorMessage = lp.Error;
+                CurrentSteps[1].Status = "error";
+                return;
+            }
+            CurrentSteps[1].Status = "done";
+            MidagriBytes = lp.FileBytes;
+            MidagriFileName = lp.FileName;
+
+            // Step 3: Process
+            CurrentSteps[2].Status = "active";
+            AutoDownloadStatus = "Procesando datos...";
+            StateHasChanged();
+            await ProcessData();
+            DataSource = "auto";
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error auto-download: {ex.Message}";
+        }
+        finally
+        {
+            IsAutoDownloading = false;
             StateHasChanged();
         }
     }

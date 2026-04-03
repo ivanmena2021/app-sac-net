@@ -12,6 +12,7 @@ builder.Services.AddRazorComponents()
 // Register Clean Architecture services
 builder.Services.AddScoped<IDataProcessorService, DataProcessorService>();
 builder.Services.AddInfrastructure();
+builder.Services.AddHttpClient();
 
 // Increase SignalR message size for large file uploads
 builder.Services.AddSignalR(o =>

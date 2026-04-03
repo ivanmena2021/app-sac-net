@@ -90,6 +90,70 @@ else
             </table>
         </div>
 
+        <!-- Detalle por aviso -->
+        <h5 class="mt-4">Detalle por Aviso</h5>
+        <div class="row mb-2">
+            <div class="col-md-3">
+                <label class="form-label">Filtrar por alerta:</label>
+                <select class="form-select form-select-sm" @bind="FilterAlerta">
+                    <option value="">Todos</option>
+                    <option value="rojo">🔴 Rojo</option>
+                    <option value="ambar">🟡 Ámbar</option>
+                    <option value="verde">🟢 Verde</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Filtrar por etapa:</label>
+                <select class="form-select form-select-sm" @bind="FilterEtapa">
+                    <option value="">Todas</option>
+                    @foreach (var etapa in Result.Rows.Select(r => r.Etapa).Distinct().OrderBy(e => e))
+                    {
+                        <option value="@etapa">@etapa</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Filtrar por departamento:</label>
+                <select class="form-select form-select-sm" @bind="FilterDepto">
+                    <option value="">Todos</option>
+                    @foreach (var dept in Result.PorDepartamento.Keys.OrderBy(d => d))
+                    {
+                        <option value="@dept">@System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(dept.ToLower())</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <span class="badge bg-secondary">@FilteredRows.Count().ToString("N0") registros</span>
+            </div>
+        </div>
+        <div class="table-responsive" style="max-height:500px;overflow-y:auto;">
+            <table class="table table-sm table-striped table-bordered" style="font-size:0.8rem;">
+                <thead class="table-primary sticky-top">
+                    <tr><th>Código</th><th>Departamento</th><th>Provincia</th><th>Distrito</th><th>Etapa</th><th>Alerta</th><th class="text-end">Días</th><th>Detalle</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in FilteredRows.Take(200))
+                    {
+                        var badgeCls = r.Alerta switch { "rojo" => "bg-danger", "ambar" => "bg-warning text-dark", _ => "bg-success" };
+                        <tr>
+                            <td>@r.CodigoAviso</td>
+                            <td>@System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(r.Departamento.ToLower())</td>
+                            <td>@r.Provincia</td>
+                            <td>@r.Distrito</td>
+                            <td>@r.Etapa</td>
+                            <td><span class="badge @badgeCls">@r.Alerta</span></td>
+                            <td class="text-end">@r.Dias</td>
+                            <td>@r.Detalle</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        @if (FilteredRows.Count() > 200)
+        {
+            <small class="text-muted">Mostrando 200 de @FilteredRows.Count().ToString("N0") registros.</small>
+        }
+
         <button class="btn btn-outline-secondary mt-3" @onclick="() => Result = null">🔄 Recalcular</button>
     }
 }
@@ -98,6 +162,25 @@ else
 
 @code {
     private SemaforoResultDto? Result;
+    private string FilterAlerta = "";
+    private string FilterEtapa = "";
+    private string FilterDepto = "";
+
+    private IEnumerable<SemaforoRow> FilteredRows
+    {
+        get
+        {
+            if (Result == null) return Enumerable.Empty<SemaforoRow>();
+            IEnumerable<SemaforoRow> rows = Result.Rows;
+            if (!string.IsNullOrEmpty(FilterAlerta))
+                rows = rows.Where(r => r.Alerta == FilterAlerta);
+            if (!string.IsNullOrEmpty(FilterEtapa))
+                rows = rows.Where(r => r.Etapa == FilterEtapa);
+            if (!string.IsNullOrEmpty(FilterDepto))
+                rows = rows.Where(r => r.Departamento.Equals(FilterDepto, StringComparison.OrdinalIgnoreCase));
+            return rows.OrderByDescending(r => r.Dias);
+        }
+    }
 
     private void ComputeSemaforo()
     {

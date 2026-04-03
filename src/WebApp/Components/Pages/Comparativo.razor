@@ -1,33 +1,594 @@
 @page "/comparativo"
 @rendermode InteractiveServer
+@inject IStaticDataRepository StaticRepo
 @using WebApp.Components.Custom
+@using Application.DTOs.Responses
 
-<PageTitle>Comparativo Campañas — SAC</PageTitle>
+<PageTitle>Comparativo Campanas — SAC</PageTitle>
 
-<PageHeader Title="📈 Comparativo de Campañas" Description="Evolución histórica del SAC a lo largo de 6 campañas (2020-2026)" />
+<PageHeader Title="Comparativo de Campanas" Description="Evolucion historica del SAC: 5 campanas anteriores + campana actual 2025-2026" />
 
 @if (Home.SharedDatos == null)
 {
-    <div class="alert alert-warning">⚠️ Primero cargue los datos en la página de <a href="/">Inicio</a>.</div>
+    <div class="alert alert-warning">Primero cargue los datos en la pagina de <a href="/">Inicio</a>.</div>
+}
+else if (AllData == null)
+{
+    <div class="text-center my-5"><div class="spinner-border text-primary"></div><p class="mt-2">Cargando datos historicos...</p></div>
 }
 else
 {
-    <div class="alert alert-info">
-        📊 Esta sección muestra la comparación de la campaña actual 2025-2026 con las 5 campañas anteriores.
-        Los datos históricos provienen de archivos estáticos incluidos en la aplicación.
+    <!-- ═══════════════════════ SELECTOR DE METRICA ═══════════════════════ -->
+    <div class="card mb-3">
+        <div class="card-body py-2">
+            <label class="form-label fw-bold mb-1">Metrica:</label>
+            <div class="btn-group flex-wrap" role="group">
+                @foreach (var m in MetricaOptions)
+                {
+                    <button type="button"
+                            class="btn @(SelectedMetrica == m.Key ? "btn-primary" : "btn-outline-primary") btn-sm"
+                            @onclick="() => SelectedMetrica = m.Key">
+                        @m.Key
+                    </button>
+                }
+            </div>
+            <small class="text-muted d-block mt-1">@MetricaOptions[SelectedMetrica].desc</small>
+        </div>
     </div>
 
-    <h5 class="mt-4">Campaña Actual 2025-2026</h5>
+    <!-- ═══════════════════════ GRAFICO DE BARRAS — 6 CAMPANAS ═══════════════════════ -->
+    <div class="card mb-4">
+        <div class="card-header"><strong>@SelectedMetrica por Campana Agricola</strong></div>
+        <div class="card-body">
+            <div class="mb-2">
+                <small class="text-danger">--- Prom. historico: @FormatValue(GetAvgHist(), CurrentMetricKey)</small>
+            </div>
+            @for (int i = 0; i < AllCampanas.Count; i++)
+            {
+                var camp = AllCampanas[i];
+                var val = GetBarValues()[i];
+                var maxV = GetBarMax();
+                var pct = (val / maxV) * 100;
+                var isActual = camp == CampanaActual;
+                var barColor = isActual ? "#408B14" : "#2980b9";
+                var avgH = GetAvgHist();
+                <div class="d-flex align-items-center mb-2">
+                    <span class="text-nowrap me-2" style="width:85px;font-size:0.85rem;font-weight:@(isActual ? "bold" : "normal")">@camp</span>
+                    <div class="flex-grow-1 position-relative" style="height:28px;background:#f0f0f0;border-radius:4px;">
+                        <div style="width:@(pct.ToString("F1", System.Globalization.CultureInfo.InvariantCulture))%;height:100%;background:@barColor;border-radius:4px;transition:width 0.3s;"></div>
+                        @if (avgH > 0 && avgH <= maxV)
+                        {
+                            <div style="position:absolute;left:@(((avgH / maxV) * 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture))%;top:0;bottom:0;border-left:2px dashed #e74c3c;"></div>
+                        }
+                    </div>
+                    <span class="ms-2 text-nowrap" style="font-size:0.8rem;min-width:100px;text-align:right;font-weight:@(isActual ? "bold" : "normal")">@FormatValue(val, CurrentMetricKey)</span>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- ═══════════════════════ TABLA COMPARATIVA ═══════════════════════ -->
+    <h5 class="mt-4">Tabla Comparativa</h5>
+    <div class="table-responsive">
+        <table class="table table-sm table-striped table-bordered">
+            <thead class="table-primary">
+                <tr>
+                    <th>Campana</th><th class="text-end">Avisos</th><th class="text-end">Prima Neta</th>
+                    <th class="text-end">Indemnizacion</th><th class="text-end">Siniestralidad</th>
+                    <th class="text-end">Ha Indemnizadas</th><th class="text-end">Desembolso</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var camp in AllCampanas)
+                {
+                    var d = AllData[camp];
+                    var isActual = camp == CampanaActual;
+                    var sinPct = d["siniestralidad"];
+                    var sinIcon = sinPct > 70 ? "bg-danger" : sinPct > 50 ? "bg-warning" : "bg-success";
+                    <tr class="@(isActual ? "table-success fw-bold" : "")">
+                        <td>@camp @(isActual ? " *" : "")</td>
+                        <td class="text-end">@d["avisos"].ToString("N0")</td>
+                        <td class="text-end">@(d["prima_neta"] > 0 ? $"S/ {d["prima_neta"]:N0}" : "—")</td>
+                        <td class="text-end">S/ @d["monto"].ToString("N0")</td>
+                        <td class="text-end"><span class="badge @sinIcon">@sinPct.ToString("F1")%</span></td>
+                        <td class="text-end">@d["ha"].ToString("N0")</td>
+                        <td class="text-end">S/ @d["desembolso"].ToString("N0")</td>
+                    </tr>
+                }
+                <tr class="table-info fw-bold">
+                    <td>PROMEDIO HISTORICO</td>
+                    <td class="text-end">@GetHistAvg("avisos").ToString("N0")</td>
+                    <td class="text-end">S/ @GetHistAvg("prima_neta").ToString("N0")</td>
+                    <td class="text-end">S/ @GetHistAvg("monto").ToString("N0")</td>
+                    <td class="text-end"><span class="badge bg-secondary">@GetHistAvg("siniestralidad").ToString("F1")%</span></td>
+                    <td class="text-end">@GetHistAvg("ha").ToString("N0")</td>
+                    <td class="text-end">S/ @GetHistAvg("desembolso").ToString("N0")</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ═══════════════════════ COMPARATIVO DEPARTAMENTAL ═══════════════════════ -->
+    <h5 class="mt-4">Comparativo Departamental — Actual vs. Promedio Historico</h5>
+    @if (DeptComparison.Count > 0)
+    {
+        <div class="table-responsive" style="max-height:500px;overflow-y:auto;">
+            <table class="table table-sm table-striped table-bordered">
+                <thead class="table-primary sticky-top">
+                    <tr>
+                        <th>Departamento</th>
+                        <th class="text-end">Avisos Actual</th><th class="text-end">Avisos Prom.</th><th class="text-end">Var.</th>
+                        <th class="text-end">Indemn. Actual</th><th class="text-end">Indemn. Prom.</th><th class="text-end">Var.</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in DeptComparison)
+                    {
+                        <tr>
+                            <td>@ToTitleCase(row.Depto)</td>
+                            <td class="text-end">@row.AvisosActual</td>
+                            <td class="text-end">@row.AvisosPromedio.ToString("N0")</td>
+                            <td class="text-end @(row.VarAvisos >= 0 ? "text-danger" : "text-success")">
+                                @((row.VarAvisos >= 0 ? "+" : "") + row.VarAvisos.ToString("F1") + "%")
+                            </td>
+                            <td class="text-end">S/ @row.IndemnActual.ToString("N0")</td>
+                            <td class="text-end">S/ @row.IndemnPromedio.ToString("N0")</td>
+                            <td class="text-end @(row.VarIndemn >= 0 ? "text-danger" : "text-success")">
+                                @((row.VarIndemn >= 0 ? "+" : "") + row.VarIndemn.ToString("F1") + "%")
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <!-- ═══════════════════════ EVOLUCION DE SINIESTRALIDAD ═══════════════════════ -->
+    <h5 class="mt-4">Evolucion de Siniestralidad</h5>
+    <div class="card mb-3">
+        <div class="card-body">
+            @for (int i = 0; i < AllCampanas.Count; i++)
+            {
+                var camp = AllCampanas[i];
+                var sinVal = AllData[camp]["siniestralidad"];
+                var sinMax = AllCampanas.Select(c => AllData[c]["siniestralidad"]).Max();
+                if (sinMax == 0) sinMax = 100;
+                var pctBar = (sinVal / sinMax) * 100;
+                var barCol = sinVal > 70 ? "#e74c3c" : sinVal > 50 ? "#f39c12" : "#27ae60";
+                <div class="d-flex align-items-center mb-2">
+                    <span class="text-nowrap me-2" style="width:85px;font-size:0.85rem;">@camp</span>
+                    <div class="flex-grow-1 position-relative" style="height:24px;background:#f0f0f0;border-radius:4px;">
+                        <div style="width:@(pctBar.ToString("F1", System.Globalization.CultureInfo.InvariantCulture))%;height:100%;background:@barCol;border-radius:4px;"></div>
+                        @* Umbral 70% *@
+                        @if (70 <= sinMax)
+                        {
+                            <div style="position:absolute;left:@(((70.0 / sinMax) * 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture))%;top:0;bottom:0;border-left:2px dotted #e74c3c;" title="Umbral alto 70%"></div>
+                        }
+                    </div>
+                    <span class="ms-2 text-nowrap" style="font-size:0.8rem;min-width:60px;text-align:right;">@sinVal.ToString("F1")%</span>
+                </div>
+            }
+            <small class="text-muted">Siniestralidad = Indemnizacion / Prima Neta x 100. Linea punteada = umbral alto (70%).</small>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════ EVOLUCION TEMPORAL ═══════════════════════ -->
+    <hr />
+    <h4>Evolucion Temporal Comparativa</h4>
+    <p class="text-muted small">Campanas alineadas por mes agricola (Ago - Jul). Campana actual en verde y mas gruesa.</p>
+
     <div class="row">
-        <div class="col-md-3"><MetricCard Label="Total Avisos" Value="@Home.SharedDatos.Metricas.TotalAvisos.ToString("N0")" Accent="blue" /></div>
-        <div class="col-md-3"><MetricCard Label="Prima Neta" Value="@($"S/ {Home.SharedDatos.Metricas.PrimaNeta:N0}")" Accent="green" /></div>
-        <div class="col-md-3"><MetricCard Label="Indemnización" Value="@($"S/ {Home.SharedDatos.Metricas.MontoIndemnizado:N0}")" Accent="amber" /></div>
-        <div class="col-md-3"><MetricCard Label="Siniestralidad" Value="@($"{Home.SharedDatos.Metricas.IndiceSiniestralidad:F1}%")" Accent="@(Home.SharedDatos.Metricas.IndiceSiniestralidad > 70 ? "red" : Home.SharedDatos.Metricas.IndiceSiniestralidad > 50 ? "amber" : "green")" /></div>
+        <div class="col-md-6">
+            <div class="card mb-3">
+                <div class="card-header"><strong>Avisos por Mes</strong></div>
+                <div class="card-body p-2">
+                    @RenderMonthlyTable("avisos_count", false)
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card mb-3">
+                <div class="card-header"><strong>Avisos Acumulados</strong></div>
+                <div class="card-body p-2">
+                    @RenderMonthlyTable("avisos_count", true)
+                </div>
+            </div>
+        </div>
     </div>
 
-    <div class="alert alert-info mt-3">
-        📈 Los gráficos interactivos de evolución temporal y comparación entre campañas se habilitarán cuando se complete la integración con Plotly.Blazor.
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card mb-3">
+                <div class="card-header"><strong>Indemnizaciones por Mes (S/)</strong></div>
+                <div class="card-body p-2">
+                    @RenderMonthlyTable("indemn_monto", false)
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card mb-3">
+                <div class="card-header"><strong>Indemnizaciones Acumuladas (S/)</strong></div>
+                <div class="card-body p-2">
+                    @RenderMonthlyTable("indemn_monto", true)
+                </div>
+            </div>
+        </div>
     </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card mb-3">
+                <div class="card-header"><strong>Casos Indemnizados por Mes</strong></div>
+                <div class="card-body p-2">
+                    @RenderMonthlyTable("indemn_count", false)
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card mb-3">
+                <div class="card-header"><strong>Indemnizados Acumulados</strong></div>
+                <div class="card-body p-2">
+                    @RenderMonthlyTable("indemn_count", true)
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leyenda -->
+    <div class="d-flex flex-wrap gap-3 mb-3">
+        @foreach (var camp in AllCampanas)
+        {
+            var color = GetCampColor(camp);
+            <div class="d-flex align-items-center gap-1">
+                <div style="width:20px;height:4px;background:@color;@(camp == CampanaActual ? "height:6px;" : "")"></div>
+                <small style="@(camp == CampanaActual ? "font-weight:bold;" : "")">@camp</small>
+            </div>
+        }
+    </div>
+
+    <p class="text-muted small">
+        Nota: Eventos reportados se registran por FECHA_AVISO. Indemnizaciones por FECHA_AJUSTE.
+        Meses alineados al ciclo de campana agricola: agosto - julio.
+    </p>
+    <p class="text-muted small">
+        Fuente: Datos historicos de 5 campanas SAC (resumen_departamental.json) +
+        Primas historicas (Primas_Totales_SAC_2020-2026.xlsx) +
+        Campana actual desde datos consolidados.
+    </p>
 }
 
 <SacFooter />
+
+@code {
+    private static readonly string[] CampanasHistArr = { "2020-2021", "2021-2022", "2022-2023", "2023-2024", "2024-2025" };
+    private static readonly string CampanaActual = "2025-2026";
+    private static readonly string[] MesesCampana = { "Ago", "Sep", "Oct", "Nov", "Dic", "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul" };
+
+    private List<string> CampanasHist = new(CampanasHistArr);
+    private List<string> AllCampanas = new(CampanasHistArr.Append(CampanaActual));
+
+    private Dictionary<string, Dictionary<string, double>>? AllData;
+    private List<DeptCompRow> DeptComparison = new();
+    private string SelectedMetrica = "Avisos";
+
+    // Series temporales
+    private Dictionary<string, double[]> AvisosSeries = new();
+    private Dictionary<string, double[]> IndemnCountSeries = new();
+    private Dictionary<string, double[]> IndemnMontoSeries = new();
+
+    private static readonly Dictionary<string, (string key, string desc)> MetricaOptions = new()
+    {
+        ["Avisos"] = ("avisos", "Numero total de avisos de siniestro reportados"),
+        ["Indemnizacion (S/)"] = ("monto", "Monto total indemnizado"),
+        ["Siniestralidad (%)"] = ("siniestralidad", "Indemnizacion / Prima Neta x 100"),
+        ["Prima Neta (S/)"] = ("prima_neta", "Prima neta de la campana"),
+        ["Ha Indemnizadas"] = ("ha", "Hectareas con indemnizacion"),
+        ["Desembolso (S/)"] = ("desembolso", "Monto desembolsado a productores"),
+    };
+
+    private string CurrentMetricKey => MetricaOptions[SelectedMetrica].key;
+
+    private List<double> GetBarValues() =>
+        AllData == null ? new() : AllCampanas.Select(c => AllData[c][CurrentMetricKey]).ToList();
+
+    private double GetBarMax()
+    {
+        var vals = GetBarValues();
+        var max = vals.Count > 0 ? vals.Max() : 0;
+        return max == 0 ? 1 : max;
+    }
+
+    private double GetAvgHist() =>
+        AllData == null ? 0 : CampanasHist.Select(c => AllData[c][CurrentMetricKey]).Average();
+
+    private double GetHistAvg(string key) =>
+        AllData == null ? 0 : CampanasHist.Select(c => AllData[c][key]).Average();
+
+    protected override void OnInitialized()
+    {
+        if (Home.SharedDatos == null) return;
+        LoadHistoricalData();
+    }
+
+    private void LoadHistoricalData()
+    {
+        var datos = Home.SharedDatos!;
+        var porCampana = StaticRepo.LoadResumenDepartamental();
+        var primasHist = StaticRepo.LoadPrimasHistoricas();
+
+        AllData = new Dictionary<string, Dictionary<string, double>>();
+
+        // Campanas historicas
+        foreach (var camp in CampanasHist)
+        {
+            int avisos = 0, indemnizados = 0;
+            double monto = 0, ha = 0, desemb = 0, prima = 0;
+
+            foreach (var (dept, camps) in porCampana)
+            {
+                if (camps.TryGetValue(camp, out var c))
+                {
+                    avisos += c.Avisos;
+                    indemnizados += c.Indemnizados;
+                    monto += c.MontoIndemnizado;
+                    ha += c.HaIndemnizadas;
+                    desemb += c.MontoDesembolsado;
+                }
+                if (primasHist.TryGetValue(camp, out var primasCamp) && primasCamp.TryGetValue(dept, out var p))
+                    prima += p;
+            }
+
+            var sinPct = prima > 0 ? Math.Round(100.0 * monto / prima, 1) : 0;
+            AllData[camp] = new Dictionary<string, double>
+            {
+                ["avisos"] = avisos, ["indemnizados"] = indemnizados,
+                ["monto"] = monto, ["ha"] = ha, ["desembolso"] = desemb,
+                ["prima_neta"] = prima, ["siniestralidad"] = sinPct,
+            };
+        }
+
+        // Campana actual
+        var actualIndemnizados = datos.Midagri
+            .Count(s => !string.IsNullOrEmpty(s.Dictamen)
+                && s.Dictamen.ToUpper().Contains("INDEMNIZABLE")
+                && !s.Dictamen.ToUpper().Contains("NO INDEMNIZABLE"));
+
+        AllData[CampanaActual] = new Dictionary<string, double>
+        {
+            ["avisos"] = datos.Metricas.TotalAvisos,
+            ["indemnizados"] = actualIndemnizados,
+            ["monto"] = datos.Metricas.MontoIndemnizado,
+            ["ha"] = datos.Metricas.HaIndemnizadas,
+            ["desembolso"] = datos.Metricas.MontoDesembolsado,
+            ["prima_neta"] = datos.Metricas.PrimaNeta,
+            ["siniestralidad"] = datos.Metricas.IndiceSiniestralidad,
+        };
+
+        // Comparativo departamental
+        BuildDeptComparison(datos, porCampana);
+
+        // Series temporales
+        BuildTimeSeries(datos);
+    }
+
+    private void BuildDeptComparison(DatosNacionalesDto datos,
+        Dictionary<string, Dictionary<string, DeptoCampanaDto>> porCampana)
+    {
+        DeptComparison.Clear();
+        foreach (var dept in datos.DepartamentosList.OrderBy(d => d))
+        {
+            var deptUpper = dept.ToUpper();
+            var actualAvisos = datos.Midagri.Count(s => s.Departamento.ToUpper() == deptUpper);
+            var actualIndemn = datos.Midagri
+                .Where(s => s.Departamento.ToUpper() == deptUpper)
+                .Sum(s => s.Indemnizacion);
+
+            var histAvisos = new List<double>();
+            var histMonto = new List<double>();
+            if (porCampana.TryGetValue(deptUpper, out var deptCamps))
+            {
+                foreach (var camp in CampanasHist)
+                {
+                    if (deptCamps.TryGetValue(camp, out var c))
+                    {
+                        histAvisos.Add(c.Avisos);
+                        histMonto.Add(c.MontoIndemnizado);
+                    }
+                }
+            }
+
+            var avgAv = histAvisos.Count > 0 ? histAvisos.Average() : 0;
+            var avgMn = histMonto.Count > 0 ? histMonto.Average() : 0;
+
+            DeptComparison.Add(new DeptCompRow
+            {
+                Depto = dept,
+                AvisosActual = actualAvisos,
+                AvisosPromedio = avgAv,
+                VarAvisos = avgAv > 0 ? Math.Round(100.0 * (actualAvisos - avgAv) / avgAv, 1) : 0,
+                IndemnActual = actualIndemn,
+                IndemnPromedio = avgMn,
+                VarIndemn = avgMn > 0 ? Math.Round(100.0 * (actualIndemn - avgMn) / avgMn, 1) : 0,
+            });
+        }
+    }
+
+    private void BuildTimeSeries(DatosNacionalesDto datos)
+    {
+        var series = StaticRepo.LoadSeriesTemporales();
+
+        // Historicas
+        foreach (var camp in CampanasHist)
+        {
+            if (series.Avisos.TryGetValue(camp, out var rawAv))
+                AvisosSeries[camp] = BuildCampaignSeries(rawAv, camp);
+            else
+                AvisosSeries[camp] = new double[12];
+
+            if (series.Indemnizaciones.TryGetValue(camp, out var rawIn))
+            {
+                IndemnCountSeries[camp] = BuildCampaignSeriesIndemn(rawIn, camp, x => x.N);
+                IndemnMontoSeries[camp] = BuildCampaignSeriesIndemn(rawIn, camp, x => x.Monto);
+            }
+            else
+            {
+                IndemnCountSeries[camp] = new double[12];
+                IndemnMontoSeries[camp] = new double[12];
+            }
+        }
+
+        // Actual: avisos por mes desde Midagri
+        AvisosSeries[CampanaActual] = BuildCurrentAvisos(datos);
+        var (counts, montos) = BuildCurrentIndemn(datos);
+        IndemnCountSeries[CampanaActual] = counts;
+        IndemnMontoSeries[CampanaActual] = montos;
+    }
+
+    private static double[] BuildCampaignSeries(Dictionary<string, int> raw, string campana)
+    {
+        var values = new double[12];
+        foreach (var (period, val) in raw)
+        {
+            var idx = PeriodToCampanaMonth(period, campana);
+            if (idx.HasValue) values[idx.Value] = val;
+        }
+        return values;
+    }
+
+    private static double[] BuildCampaignSeriesIndemn(Dictionary<string, IndemnMensualDto> raw, string campana, Func<IndemnMensualDto, double> selector)
+    {
+        var values = new double[12];
+        foreach (var (period, val) in raw)
+        {
+            var idx = PeriodToCampanaMonth(period, campana);
+            if (idx.HasValue) values[idx.Value] = selector(val);
+        }
+        return values;
+    }
+
+    private static int? PeriodToCampanaMonth(string period, string campana)
+    {
+        if (period.Length < 7) return null;
+        if (!int.TryParse(period[..4], out var year) || !int.TryParse(period[5..7], out var month)) return null;
+        var startYear = int.Parse(campana[..4]);
+        if (year == startYear && month >= 8 && month <= 12) return month - 8;
+        if (year == startYear + 1 && month >= 1 && month <= 7) return month + 4;
+        return null;
+    }
+
+    private static double[] BuildCurrentAvisos(DatosNacionalesDto datos)
+    {
+        var values = new double[12];
+        foreach (var s in datos.Midagri)
+        {
+            var fecha = s.FechaAviso ?? s.FechaSiniestro;
+            if (fecha == null) continue;
+            var period = fecha.Value.ToString("yyyy-MM");
+            var idx = PeriodToCampanaMonth(period, CampanaActual);
+            if (idx.HasValue) values[idx.Value]++;
+        }
+        return values;
+    }
+
+    private static (double[] counts, double[] montos) BuildCurrentIndemn(DatosNacionalesDto datos)
+    {
+        var counts = new double[12];
+        var montos = new double[12];
+        foreach (var s in datos.Midagri)
+        {
+            if (string.IsNullOrEmpty(s.Dictamen)) continue;
+            var dict = s.Dictamen.ToUpper();
+            if (!dict.Contains("INDEMNIZABLE") || dict.Contains("NO INDEMNIZABLE")) continue;
+            var fecha = s.FechaAtencion ?? s.FechaSiniestro;
+            if (fecha == null) continue;
+            var period = fecha.Value.ToString("yyyy-MM");
+            var idx = PeriodToCampanaMonth(period, CampanaActual);
+            if (idx.HasValue)
+            {
+                counts[idx.Value]++;
+                montos[idx.Value] += s.Indemnizacion;
+            }
+        }
+        return (counts, montos);
+    }
+
+    private RenderFragment RenderMonthlyTable(string seriesType, bool cumulative) => __builder =>
+    {
+        var seriesDict = seriesType switch
+        {
+            "avisos_count" => AvisosSeries,
+            "indemn_count" => IndemnCountSeries,
+            "indemn_monto" => IndemnMontoSeries,
+            _ => AvisosSeries,
+        };
+        var isMoney = seriesType == "indemn_monto";
+
+        <div class="table-responsive" style="font-size:0.75rem;">
+            <table class="table table-sm table-bordered mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Campana</th>
+                        @foreach (var m in MesesCampana)
+                        {
+                            <th class="text-end">@m</th>
+                        }
+                        <th class="text-end fw-bold">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var camp in AllCampanas)
+                    {
+                        var raw = seriesDict.GetValueOrDefault(camp, new double[12]);
+                        var vals = cumulative ? Cumulate(raw) : raw;
+                        var isActual = camp == CampanaActual;
+                        var color = GetCampColor(camp);
+                        <tr style="@(isActual ? "font-weight:bold;" : "")">
+                            <td style="border-left:4px solid @color;">@camp</td>
+                            @foreach (var v in vals)
+                            {
+                                <td class="text-end">@(v > 0 ? (isMoney ? $"{v:N0}" : $"{v:N0}") : "-")</td>
+                            }
+                            <td class="text-end fw-bold">@(isMoney ? $"{vals.Sum():N0}" : (cumulative ? $"{vals.LastOrDefault():N0}" : $"{vals.Sum():N0}"))</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    };
+
+    private static double[] Cumulate(double[] arr)
+    {
+        var result = new double[arr.Length];
+        double sum = 0;
+        for (int i = 0; i < arr.Length; i++) { sum += arr[i]; result[i] = sum; }
+        return result;
+    }
+
+    private static string GetCampColor(string camp) => camp switch
+    {
+        "2020-2021" => "#636EFA", "2021-2022" => "#EF553B", "2022-2023" => "#00CC96",
+        "2023-2024" => "#AB63FA", "2024-2025" => "#FFA15A", "2025-2026" => "#408B14",
+        _ => "#999",
+    };
+
+    private static string FormatValue(double val, string key) => key switch
+    {
+        "monto" or "desembolso" or "prima_neta" => $"S/ {val:N0}",
+        "siniestralidad" => $"{val:F1}%",
+        _ => val.ToString("N0"),
+    };
+
+    private static string ToTitleCase(string s) =>
+        System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(s.ToLower());
+
+    private class DeptCompRow
+    {
+        public string Depto { get; set; } = "";
+        public int AvisosActual { get; set; }
+        public double AvisosPromedio { get; set; }
+        public double VarAvisos { get; set; }
+        public double IndemnActual { get; set; }
+        public double IndemnPromedio { get; set; }
+        public double VarIndemn { get; set; }
+    }
+}

@@ -4,29 +4,30 @@
 
 <PageTitle>Explorar Datos — SAC</PageTitle>
 
-<PageHeader Title="🔍 Explorar Datos" Description="Visualización de datos cargados y auditoría de calidad" />
+<PageHeader Title="Explorar Datos" Description="Visualizacion de datos cargados y auditoria de calidad" />
 
 @if (Home.SharedDatos == null)
 {
-    <div class="alert alert-warning">⚠️ Primero cargue los datos en la página de <a href="/">Inicio</a>.</div>
+    <div class="alert alert-warning">Primero cargue los datos en la pagina de <a href="/">Inicio</a>.</div>
 }
 else
 {
     var datos = Home.SharedDatos;
 
     <ul class="nav nav-tabs" role="tablist">
-        <li class="nav-item"><button class="nav-link @(Tab == "consolidado" ? "active" : "")" @onclick='() => Tab = "consolidado"'>📊 Datos Consolidados</button></li>
-        <li class="nav-item"><button class="nav-link @(Tab == "calidad" ? "active" : "")" @onclick='() => Tab = "calidad"'>🔬 Calidad de Datos</button></li>
+        <li class="nav-item"><button class="nav-link @(Tab == "consolidado" ? "active" : "")" @onclick='() => Tab = "consolidado"'>Datos Consolidados</button></li>
+        <li class="nav-item"><button class="nav-link @(Tab == "rimac" ? "active" : "")" @onclick='() => Tab = "rimac"'>Siniestros (Rimac)</button></li>
+        <li class="nav-item"><button class="nav-link @(Tab == "calidad" ? "active" : "")" @onclick='() => Tab = "calidad"'>Calidad de Datos</button></li>
     </ul>
 
     <div class="tab-content mt-3">
         @if (Tab == "consolidado")
         {
-            <p><strong>Registros totales:</strong> @datos.Midagri.Count.ToString("N0")</p>
-            <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+            <p><strong>MIDAGRI (La Positiva) — Registros:</strong> @datos.Midagri.Count.ToString("N0")</p>
+            <div class="table-responsive" style="max-height:500px;overflow-y:auto;">
                 <table class="table table-sm table-striped table-bordered">
                     <thead class="table-primary sticky-top">
-                        <tr><th>Departamento</th><th>Provincia</th><th>Distrito</th><th>Cultivo</th><th>Tipo Siniestro</th><th>Estado</th><th>Sup. Indemnizada</th><th>Indemnización</th></tr>
+                        <tr><th>Departamento</th><th>Provincia</th><th>Distrito</th><th>Cultivo</th><th>Tipo Siniestro</th><th>Estado</th><th class="text-end">Sup. Indemn.</th><th class="text-end">Indemnizacion</th></tr>
                     </thead>
                     <tbody>
                         @foreach (var s in datos.Midagri.Take(200))
@@ -37,9 +38,9 @@ else
                 </table>
             </div>
 
-            <h5 class="mt-4">Distribución de Siniestros por Tipo</h5>
+            <h5 class="mt-4">Top 15 Tipos de Siniestro</h5>
             <div class="row">
-                @foreach (var kvp in datos.SiniestrosPorTipo.OrderByDescending(x => x.Value).Take(10))
+                @foreach (var kvp in datos.SiniestrosPorTipo.OrderByDescending(x => x.Value).Take(15))
                 {
                     var pct = datos.Metricas.TotalAvisos > 0 ? (double)kvp.Value / datos.Metricas.TotalAvisos * 100 : 0;
                     <div class="col-md-6 mb-2">
@@ -55,31 +56,117 @@ else
                 }
             </div>
         }
+        else if (Tab == "rimac")
+        {
+            @if (datos.SiniestrosOriginal.Count > 0)
+            {
+                <p><strong>Siniestros (Rimac) — Registros:</strong> @datos.SiniestrosOriginal.Count.ToString("N0")</p>
+                <div class="table-responsive" style="max-height:500px;overflow-y:auto;">
+                    <table class="table table-sm table-striped table-bordered">
+                        <thead class="table-primary sticky-top">
+                            <tr><th>Departamento</th><th>Provincia</th><th>Distrito</th><th>Cultivo</th><th>Tipo Siniestro</th><th>Estado</th><th class="text-end">Sup. Indemn.</th><th class="text-end">Indemnizacion</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var s in datos.SiniestrosOriginal.Take(200))
+                            {
+                                <tr><td>@s.Departamento</td><td>@s.Provincia</td><td>@s.Distrito</td><td>@s.TipoCultivo</td><td>@s.TipoSiniestro</td><td>@s.EstadoInspeccion</td><td class="text-end">@s.SupIndemnizada.ToString("N2")</td><td class="text-end">@s.Indemnizacion.ToString("N2")</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                <h5 class="mt-4">Tipos de Siniestro — Rimac</h5>
+                <div class="row">
+                    @foreach (var g in datos.SiniestrosOriginal
+                        .Where(s => !string.IsNullOrEmpty(s.TipoSiniestro))
+                        .GroupBy(s => s.TipoSiniestro).OrderByDescending(g => g.Count()).Take(10))
+                    {
+                        var pct = datos.SiniestrosOriginal.Count > 0 ? (double)g.Count() / datos.SiniestrosOriginal.Count * 100 : 0;
+                        <div class="col-md-6 mb-2">
+                            <div class="d-flex align-items-center">
+                                <span class="me-2" style="min-width:180px;font-size:0.85rem;">@g.Key</span>
+                                <div class="progress flex-grow-1" style="height:22px;">
+                                    <div class="progress-bar bg-info" style="width:@pct.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)%;">
+                                        @g.Count() (@pct.ToString("F1")%)
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="alert alert-info">No se cargaron datos de Siniestros (Rimac) por separado, o fueron integrados al consolidado.</div>
+            }
+        }
         else
         {
-            <!-- Quality Dashboard -->
+            <!-- Calidad de Datos — Dashboard Completo -->
             <div class="row">
-                <div class="col-md-3"><MetricCard Label="Total Registros" Value="@datos.Midagri.Count.ToString("N0")" Accent="blue" /></div>
-                <div class="col-md-3"><MetricCard Label="Departamentos" Value="@datos.DepartamentosList.Count.ToString()" Accent="green" /></div>
-                <div class="col-md-3">
-                    @{ var dupes = datos.Midagri.GroupBy(s => s.CodigoAviso).Count(g => g.Count() > 1 && !string.IsNullOrEmpty(g.Key)); }
-                    <MetricCard Label="Códigos Duplicados" Value="@dupes.ToString("N0")" Accent="@(dupes > 0 ? "amber" : "green")" />
+                <div class="col-md-2"><MetricCard Label="Total Registros" Value="@datos.Midagri.Count.ToString("N0")" Accent="blue" /></div>
+                <div class="col-md-2"><MetricCard Label="Departamentos" Value="@datos.DepartamentosList.Count.ToString()" Accent="green" /></div>
+                <div class="col-md-2">
+                    <MetricCard Label="Provincias" Value="@datos.Midagri.Select(s => s.Provincia).Where(p => !string.IsNullOrEmpty(p)).Distinct().Count().ToString()" Accent="blue" />
                 </div>
-                <div class="col-md-3">
-                    @{ var sinTipo = datos.Midagri.Count(s => string.IsNullOrWhiteSpace(s.TipoSiniestro)); }
-                    <MetricCard Label="Sin Tipo Siniestro" Value="@sinTipo.ToString("N0")" Accent="@(sinTipo > 0 ? "red" : "green")" />
+                <div class="col-md-2">
+                    <MetricCard Label="Distritos" Value="@datos.Midagri.Select(s => s.Distrito).Where(d => !string.IsNullOrEmpty(d)).Distinct().Count().ToString()" Accent="blue" />
+                </div>
+                <div class="col-md-2">
+                    <MetricCard Label="Codigos Duplicados" Value="@GetDuplicateCount(datos).ToString("N0")" Accent="@(GetDuplicateCount(datos) > 0 ? "amber" : "green")" />
+                </div>
+                <div class="col-md-2">
+                    <MetricCard Label="Sin Tipo Siniestro" Value="@datos.Midagri.Count(s => string.IsNullOrWhiteSpace(s.TipoSiniestro)).ToString("N0")" Accent="@(datos.Midagri.Any(s => string.IsNullOrWhiteSpace(s.TipoSiniestro)) ? "red" : "green")" />
                 </div>
             </div>
 
-            <h5 class="mt-4">Distribución por Empresa</h5>
+            <!-- Checks adicionales -->
+            <h5 class="mt-4">Auditoria de Campos</h5>
             <div class="table-responsive">
                 <table class="table table-sm table-bordered">
-                    <thead class="table-primary"><tr><th>Empresa</th><th>Registros</th><th>%</th></tr></thead>
+                    <thead class="table-primary"><tr><th>Campo</th><th class="text-end">Con valor</th><th class="text-end">Vacios/Nulos</th><th class="text-end">% Completitud</th><th>Estado</th></tr></thead>
+                    <tbody>
+                        @foreach (var field in QualityFields)
+                        {
+                            var filled = field.countFn(datos.Midagri);
+                            var empty = datos.Midagri.Count - filled;
+                            var pct = datos.Midagri.Count > 0 ? (100.0 * filled / datos.Midagri.Count) : 0;
+                            var badge = pct >= 95 ? "bg-success" : pct >= 70 ? "bg-warning text-dark" : "bg-danger";
+                            <tr>
+                                <td>@field.name</td>
+                                <td class="text-end">@filled.ToString("N0")</td>
+                                <td class="text-end">@empty.ToString("N0")</td>
+                                <td class="text-end">@pct.ToString("F1")%</td>
+                                <td><span class="badge @badge">@(pct >= 95 ? "OK" : pct >= 70 ? "Parcial" : "Critico")</span></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <h5 class="mt-4">Distribucion por Empresa</h5>
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered">
+                    <thead class="table-primary"><tr><th>Empresa</th><th class="text-end">Registros</th><th class="text-end">%</th></tr></thead>
                     <tbody>
                         @foreach (var kvp in datos.Empresas.OrderByDescending(e => e.Value))
                         {
                             var pct = datos.Metricas.TotalAvisos > 0 ? (double)kvp.Value / datos.Metricas.TotalAvisos * 100 : 0;
                             <tr><td>@kvp.Key</td><td class="text-end">@kvp.Value.ToString("N0")</td><td class="text-end">@pct.ToString("F1")%</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <h5 class="mt-4">Distribucion por Estado de Inspeccion</h5>
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered">
+                    <thead class="table-primary"><tr><th>Estado</th><th class="text-end">Registros</th><th class="text-end">%</th></tr></thead>
+                    <tbody>
+                        @foreach (var g in datos.Midagri.GroupBy(s => string.IsNullOrEmpty(s.EstadoInspeccion) ? "(Sin estado)" : s.EstadoInspeccion).OrderByDescending(g => g.Count()))
+                        {
+                            var pct = datos.Midagri.Count > 0 ? (double)g.Count() / datos.Midagri.Count * 100 : 0;
+                            <tr><td>@g.Key</td><td class="text-end">@g.Count().ToString("N0")</td><td class="text-end">@pct.ToString("F1")%</td></tr>
                         }
                     </tbody>
                 </table>
@@ -92,4 +179,23 @@ else
 
 @code {
     private string Tab = "consolidado";
+
+    private static int GetDuplicateCount(DatosNacionalesDto datos) =>
+        datos.Midagri.GroupBy(s => s.CodigoAviso).Count(g => g.Count() > 1 && !string.IsNullOrEmpty(g.Key));
+
+    private static readonly List<(string name, Func<List<Domain.Entities.Siniestro>, int> countFn)> QualityFields = new()
+    {
+        ("Departamento", m => m.Count(s => !string.IsNullOrWhiteSpace(s.Departamento))),
+        ("Provincia", m => m.Count(s => !string.IsNullOrWhiteSpace(s.Provincia))),
+        ("Distrito", m => m.Count(s => !string.IsNullOrWhiteSpace(s.Distrito))),
+        ("Tipo Cultivo", m => m.Count(s => !string.IsNullOrWhiteSpace(s.TipoCultivo))),
+        ("Tipo Siniestro", m => m.Count(s => !string.IsNullOrWhiteSpace(s.TipoSiniestro))),
+        ("Fecha Aviso", m => m.Count(s => s.FechaAviso.HasValue)),
+        ("Fecha Siniestro", m => m.Count(s => s.FechaSiniestro.HasValue)),
+        ("Codigo Aviso", m => m.Count(s => !string.IsNullOrWhiteSpace(s.CodigoAviso))),
+        ("Dictamen", m => m.Count(s => !string.IsNullOrWhiteSpace(s.Dictamen))),
+        ("Estado Inspeccion", m => m.Count(s => !string.IsNullOrWhiteSpace(s.EstadoInspeccion))),
+        ("Indemnizacion", m => m.Count(s => s.Indemnizacion > 0)),
+        ("Monto Desembolsado", m => m.Count(s => s.MontoDesembolsado > 0)),
+    };
 }

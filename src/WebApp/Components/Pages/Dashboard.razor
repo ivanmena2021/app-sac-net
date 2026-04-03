@@ -1,6 +1,7 @@
 @page "/dashboard"
 @rendermode InteractiveServer
 @inject IExcelEnhancedService ExcelEnhancedService
+@inject ISemaforoService SemaforoService
 @inject IJSRuntime JS
 @using WebApp.Components.Custom
 
@@ -16,8 +17,34 @@ else
 {
     <StatusBanner IsDataLoaded="true" Timestamp="@Home.UpdateTimestamp" Source="@Home.DataSource" />
 
+    <!-- Semaforo notification banner -->
+    @if (SemaforoResult != null && (SemaforoResult.Rojo > 0 || SemaforoResult.Ambar > 0))
+    {
+        var pctRiesgo = SemaforoResult.TotalAvisos > 0 ? (double)(SemaforoResult.Ambar + SemaforoResult.Rojo) / SemaforoResult.TotalAvisos * 100 : 0;
+        var alertClass = SemaforoResult.Rojo > SemaforoResult.TotalAvisos * 0.3 ? "alert-danger" : "alert-warning";
+        <div class="alert @alertClass d-flex align-items-center mt-2 mb-0" role="alert">
+            <span class="me-2" style="font-size:1.3rem;">🚦</span>
+            <div>
+                <strong>Alerta SAC:</strong>
+                @SemaforoResult.Rojo.ToString("N0") avisos vencidos (rojo) y
+                @SemaforoResult.Ambar.ToString("N0") en riesgo (ambar) de @SemaforoResult.TotalAvisos.ToString("N0") analizados
+                (@pctRiesgo.ToString("F1")% con alerta).
+                <a href="/semaforo" class="alert-link ms-1">Ver detalle →</a>
+            </div>
+        </div>
+    }
+
+    <!-- Data source info -->
+    <div class="d-flex gap-3 mt-2 mb-2" style="font-size:0.82rem;">
+        @foreach (var emp in Datos.Empresas.OrderByDescending(e => e.Value))
+        {
+            <span class="badge bg-light text-dark border">@emp.Key: @emp.Value.ToString("N0") filas</span>
+        }
+        <span class="badge bg-light text-dark border">Total: @Datos.Midagri.Count.ToString("N0") registros</span>
+    </div>
+
     <!-- Action buttons -->
-    <div class="row mt-3 mb-3">
+    <div class="row mt-2 mb-3">
         <div class="col-md-4">
             <button class="btn btn-outline-primary w-100" @onclick="ExportExcel" disabled="@IsExporting">
                 @(IsExporting ? "Exportando..." : "📥 Descargar consolidado Excel")
@@ -92,6 +119,16 @@ else
     private DatosNacionalesDto? Datos => Home.SharedDatos;
     private byte[]? ExcelBytes;
     private bool IsExporting;
+    private SemaforoResultDto? SemaforoResult;
+
+    protected override void OnInitialized()
+    {
+        if (Home.SharedDatos != null)
+        {
+            try { SemaforoResult = SemaforoService.ComputeSemaforo(Home.SharedDatos); }
+            catch { /* ignore */ }
+        }
+    }
 
     private async Task ExportExcel()
     {
