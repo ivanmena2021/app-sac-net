@@ -23,6 +23,13 @@ x86/
 *.swp
 *~
 
+## Credenciales (NUNCA subir)
+appsettings.Development.json
+appsettings.*.local.json
+
+## Python cache
+__pycache__/
+
 ## OS
 Thumbs.db
 .DS_Store
