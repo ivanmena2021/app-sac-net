@@ -33,6 +33,19 @@ def _safe_col(df, col):
     return col in df.columns
 
 
+def _safe_num(val, default=0):
+    """Sanitize numeric value: convert NaN/inf/None to default."""
+    if val is None:
+        return default
+    try:
+        f = float(val)
+        if np.isnan(f) or np.isinf(f):
+            return default
+        return f
+    except (ValueError, TypeError):
+        return default
+
+
 def _aplicar_filtros(df, filtros):
     """Aplica todos los filtros al DataFrame (sin copia innecesaria)."""
     mask = pd.Series(True, index=df.index)
@@ -68,10 +81,10 @@ def _calcular_metricas(df):
                 "desembolso": 0, "pct_desembolso": 0, "ha_indemnizadas": 0, "productores": 0}
     cerrados = int((df["ESTADO_INSPECCION"].astype(str).str.upper() == "CERRADO").sum()) if _safe_col(df, "ESTADO_INSPECCION") else 0
     pct_eval = cerrados / n * 100
-    indem = float(df["INDEMNIZACION"].sum()) if _safe_col(df, "INDEMNIZACION") else 0
-    desemb = float(df["MONTO_DESEMBOLSADO"].sum()) if _safe_col(df, "MONTO_DESEMBOLSADO") else 0
+    indem = _safe_num(df["INDEMNIZACION"].sum()) if _safe_col(df, "INDEMNIZACION") else 0
+    desemb = _safe_num(df["MONTO_DESEMBOLSADO"].sum()) if _safe_col(df, "MONTO_DESEMBOLSADO") else 0
     pct_desemb = (desemb / indem * 100) if indem > 0 else 0
-    ha = float(df["SUP_INDEMNIZADA"].sum()) if _safe_col(df, "SUP_INDEMNIZADA") else 0
+    ha = _safe_num(df["SUP_INDEMNIZADA"].sum()) if _safe_col(df, "SUP_INDEMNIZADA") else 0
     productores = 0
     if _safe_col(df, "N_PRODUCTORES"):
         _prods = pd.to_numeric(df["N_PRODUCTORES"], errors="coerce").fillna(0)
@@ -1279,7 +1292,7 @@ def _add_tipo_siniestro_slide(prs, tipos):
     if top_tipos:
         chart_data = CategoryChartData()
         chart_data.categories = [t["tipo"][:18] for t in top_tipos]
-        chart_data.add_series('Indemnización', tuple(t.get("indem", 0) for t in top_tipos))
+        chart_data.add_series('Indemnización', tuple(_safe_num(t.get("indem", 0)) for t in top_tipos))
 
         chart_shape = slide.shapes.add_chart(
             XL_CHART_TYPE.BAR_CLUSTERED, Inches(5.3), Inches(1.15),
@@ -1366,7 +1379,7 @@ def _add_top_deptos_chart(prs, top_deptos):
     chart_data = CategoryChartData()
     chart_data.categories = [d["name"] for d in top_deptos[:12]]
 
-    values = [d.get("indem", 0) for d in top_deptos[:12]]
+    values = [_safe_num(d.get("indem", 0)) for d in top_deptos[:12]]
     chart_data.add_series('Indemnización (S/)', tuple(values))
 
     # Add chart

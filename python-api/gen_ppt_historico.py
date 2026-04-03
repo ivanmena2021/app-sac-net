@@ -61,6 +61,19 @@ if os.path.exists(_RESUMEN_PATH):
 # HELPERS
 # ═══════════════════════════════════════════════════════════════
 
+def _safe_chart_val(val, default=0):
+    """Sanitize numeric value for chart data: NaN/inf/None -> default."""
+    if val is None:
+        return default
+    try:
+        f = float(val)
+        if np.isnan(f) or np.isinf(f):
+            return default
+        return f
+    except (ValueError, TypeError):
+        return default
+
+
 def _bg(slide, prs, color):
     bg = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height)
     bg.fill.solid(); bg.fill.fore_color.rgb = color; bg.line.fill.background()
@@ -321,8 +334,8 @@ def generar_ppt_historico(depto, datos, primas_hist):
 
     chart_data = CategoryChartData()
     chart_data.categories = [d["campana"] for d in campanas_data]
-    chart_data.add_series("Prima Neta (S/)", [d["prima_neta"] / 1e6 for d in campanas_data])
-    chart_data.add_series("Indemnización (S/)", [d["monto"] / 1e6 for d in campanas_data])
+    chart_data.add_series("Prima Neta (S/)", [_safe_chart_val(d["prima_neta"]) / 1e6 for d in campanas_data])
+    chart_data.add_series("Indemnización (S/)", [_safe_chart_val(d["monto"]) / 1e6 for d in campanas_data])
 
     chart_frame = slide.shapes.add_chart(
         XL_CHART_TYPE.COLUMN_CLUSTERED,
@@ -338,8 +351,9 @@ def generar_ppt_historico(depto, datos, primas_hist):
     _text(slide, 9.2, 1.1, 3.5, 0.4, "Siniestralidad (%)", 18, True, GRIS, PP_ALIGN.CENTER, "Georgia")
     for i, d in enumerate(campanas_data):
         y = 1.7 + i * 1.0
-        bar_w = min(3.2, d["siniestralidad"] / 100 * 3.2)
-        bc = _sin_color(d["siniestralidad"])
+        sin_val = _safe_chart_val(d["siniestralidad"])
+        bar_w = min(3.2, sin_val / 100 * 3.2)
+        bc = _sin_color(sin_val)
         bar = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE,
                                       Inches(9.4), Inches(y + 0.35), Inches(max(0.1, bar_w)), Inches(0.3))
         bar.fill.solid(); bar.fill.fore_color.rgb = bc; bar.line.fill.background()
