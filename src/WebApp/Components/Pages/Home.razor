@@ -196,6 +196,9 @@ else
                 using var ms2 = new MemoryStream(sb);
                 SharedDatos = DataProcessor.ProcessDynamicData(ms1, ms2);
             });
+
+            // Store bytes for Python API report generation
+            Infrastructure.PythonApi.PythonApiReportService.SetUploadedFiles(mb, sb);
             UpdateTimestamp = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
             DataSource = "manual";
             CurrentSteps[2].Status = "done";
@@ -216,6 +219,7 @@ else
     private void ResetData()
     {
         SharedDatos = null;
+        Infrastructure.PythonApi.PythonApiReportService.ClearUploadedFiles();
         UpdateTimestamp = null;
         DataSource = null;
         MidagriBytes = null;

@@ -3,8 +3,8 @@ namespace Infrastructure;
 using Application.Contracts.Repositories;
 using Application.Contracts.Services;
 using Infrastructure.Alertas;
-using Infrastructure.DocumentGeneration;
 using Infrastructure.ExcelReader;
+using Infrastructure.PythonApi;
 using Infrastructure.StaticData;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -12,15 +12,22 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services)
     {
+        // Data access (keep in .NET)
         services.AddScoped<IExcelReaderRepository, ExcelReaderRepository>();
         services.AddScoped<IStaticDataRepository, StaticDataRepository>();
-        services.AddScoped<IWordReportService, WordDocumentGenerator>();
-        services.AddScoped<IExcelReportService, ExcelDocumentGenerator>();
-        services.AddScoped<IPdfReportService, PdfReportGenerator>();
-        services.AddScoped<IExcelEnhancedService, ExcelEnhancedGenerator>();
-        services.AddScoped<IWordOperatividadService, WordOperatividadGenerator>();
+
+        // Business logic (keep in .NET)
         services.AddScoped<ISemaforoService, SemaforoService>();
-        services.AddScoped<IPptReportService, PptDinamicoGenerator>();
+
+        // Document generation (delegate to Python API)
+        services.AddHttpClient<PythonApiReportService>();
+        services.AddScoped<IWordReportService>(sp => sp.GetRequiredService<PythonApiReportService>());
+        services.AddScoped<IExcelReportService>(sp => sp.GetRequiredService<PythonApiReportService>());
+        services.AddScoped<IPdfReportService>(sp => sp.GetRequiredService<PythonApiReportService>());
+        services.AddScoped<IExcelEnhancedService>(sp => sp.GetRequiredService<PythonApiReportService>());
+        services.AddScoped<IWordOperatividadService>(sp => sp.GetRequiredService<PythonApiReportService>());
+        services.AddScoped<IPptReportService>(sp => sp.GetRequiredService<PythonApiReportService>());
+
         return services;
     }
 }
