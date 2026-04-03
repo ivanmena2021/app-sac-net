@@ -51,7 +51,11 @@ public class AutoDownloadService : IAutoDownloadService
         {
             onProgress?.Invoke("Iniciando navegador...");
             using var playwright = await Playwright.CreateAsync();
-            await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+            await using var browser = await playwright.Chromium.LaunchAsync(new()
+            {
+                Headless = true,
+                ExecutablePath = Environment.GetEnvironmentVariable("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH")
+            });
             var page = await browser.NewPageAsync();
 
             // 1. Navigate to login
@@ -108,7 +112,11 @@ public class AutoDownloadService : IAutoDownloadService
         {
             onProgress?.Invoke("Iniciando navegador...");
             using var playwright = await Playwright.CreateAsync();
-            await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+            await using var browser = await playwright.Chromium.LaunchAsync(new()
+            {
+                Headless = true,
+                ExecutablePath = Environment.GetEnvironmentVariable("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH")
+            });
             var page = await browser.NewPageAsync();
 
             // 1. Navigate to login
