@@ -1,0 +1,53 @@
+# docker-compose.yml — ReporteSAC (MIDAGRI)
+# Levanta la app .NET Blazor Server + la API Python de generacion de reportes.
+#
+# Uso:
+#   docker compose up --build -d
+#   docker compose logs -f
+#   docker compose down
+
+services:
+  # ── App web .NET 8 Blazor Server ──────────────────────────────────
+  webapp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sac-webapp
+    ports:
+      - "5141:10000"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - PORT=10000
+      - PythonApi__BaseUrl=http://python-api:8000
+      # Descomentar y configurar para habilitar consultas LLM:
+      # - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    depends_on:
+      python-api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - sac-network
+
+  # ── API Python (FastAPI) — generacion de reportes ─────────────────
+  python-api:
+    build:
+      context: ./python-api
+      dockerfile: Dockerfile
+    container_name: sac-python-api
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - sac-network
+
+networks:
+  sac-network:
+    driver: bridge

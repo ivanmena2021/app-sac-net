@@ -7,6 +7,7 @@ using Infrastructure.AutoDownload;
 using Infrastructure.ExcelReader;
 using Infrastructure.LlmQuery;
 using Infrastructure.PythonApi;
+using Infrastructure.Session;
 using Infrastructure.StaticData;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -22,6 +23,9 @@ public static class DependencyInjection
         services.AddScoped<ISemaforoService, SemaforoService>();
         services.AddScoped<IQueryLlmService, QueryLlmService>();
         services.AddScoped<IAutoDownloadService, AutoDownloadService>();
+
+        // Per-circuit file storage (multi-user safe)
+        services.AddScoped<IUploadedFileStore, UploadedFileStore>();
 
         // Document generation (delegate to Python API)
         services.AddHttpClient<PythonApiReportService>();

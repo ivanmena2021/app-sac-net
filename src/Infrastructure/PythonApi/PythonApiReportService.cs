@@ -10,38 +10,22 @@ using Microsoft.Extensions.Configuration;
 /// <summary>
 /// Calls the Python FastAPI microservice for document generation.
 /// Replaces the local .NET generators with the professional Python originals.
+/// Uses IUploadedFileStore (scoped per-circuit) for multi-user safety.
 /// </summary>
 public class PythonApiReportService : IWordReportService, IExcelReportService,
     IPdfReportService, IExcelEnhancedService, IWordOperatividadService, IPptReportService
 {
     private readonly HttpClient _httpClient;
+    private readonly IUploadedFileStore _fileStore;
     private readonly string _baseUrl;
 
-    // Store uploaded file bytes for reuse across generate calls
-    private static byte[]? _lastMidagriBytes;
-    private static byte[]? _lastSiniestrosBytes;
-
-    public PythonApiReportService(HttpClient httpClient, IConfiguration configuration)
+    public PythonApiReportService(HttpClient httpClient, IConfiguration configuration,
+        IUploadedFileStore fileStore)
     {
         _httpClient = httpClient;
+        _fileStore = fileStore;
         _baseUrl = configuration["PythonApi:BaseUrl"] ?? "http://localhost:8000";
         _httpClient.Timeout = TimeSpan.FromMinutes(5); // PPT generation can be slow
-    }
-
-    /// <summary>
-    /// Store the uploaded Excel files for later use by generate methods.
-    /// Called from Home.razor after file upload.
-    /// </summary>
-    public static void SetUploadedFiles(byte[] midagriBytes, byte[] siniestrosBytes)
-    {
-        _lastMidagriBytes = midagriBytes;
-        _lastSiniestrosBytes = siniestrosBytes;
-    }
-
-    public static void ClearUploadedFiles()
-    {
-        _lastMidagriBytes = null;
-        _lastSiniestrosBytes = null;
     }
 
     // ─── IWordReportService ───
@@ -97,17 +81,17 @@ public class PythonApiReportService : IWordReportService, IExcelReportService,
     // ─── Core HTTP call ───
     private async Task<byte[]> CallPythonApi(string reportType, string? departamento = null, Dictionary<string, string>? extraParams = null)
     {
-        if (_lastMidagriBytes == null || _lastSiniestrosBytes == null)
+        if (!_fileStore.HasFiles)
             throw new InvalidOperationException("No hay archivos Excel cargados. Suba los archivos primero.");
 
         using var content = new MultipartFormDataContent();
 
-        // Add Excel files
-        var midagriContent = new ByteArrayContent(_lastMidagriBytes);
+        // Add Excel files from scoped store (per-user)
+        var midagriContent = new ByteArrayContent(_fileStore.MidagriBytes!);
         midagriContent.Headers.ContentType = new MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         content.Add(midagriContent, "midagri", "midagri.xlsx");
 
-        var siniestrosContent = new ByteArrayContent(_lastSiniestrosBytes);
+        var siniestrosContent = new ByteArrayContent(_fileStore.SiniestrosBytes!);
         siniestrosContent.Headers.ContentType = new MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         content.Add(siniestrosContent, "siniestros", "siniestros.xlsx");
 
